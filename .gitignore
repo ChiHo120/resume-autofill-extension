@@ -1,5 +1,6 @@
 # Generated extension packages and unpacked build output
 dist/
+node_modules/
 
 # Local credentials and personal resume data
 .env

@@ -4,11 +4,16 @@
 <body class="settings"><h1>API 与简历配置</h1>
 <form id="form">
   <label>API Base URL<input id="baseUrl" type="url" placeholder="https://api.example.com/v1" required></label>
-  <label>模型<input id="model" required></label>
   <label>密钥<input id="apiKey" type="password" autocomplete="off" required></label>
-  <p>本地保存；更换服务地址时请重新输入对应密钥。</p>
-  <label>导入简历 JSON<input id="import" type="file" accept=".json,application/json"></label>
+  <div class="settings-actions"><button type="button" id="loadModels">获取模型列表</button><span id="modelStatus" role="status"></span></div>
+  <label>模型<select id="model"><option value="">先获取模型列表，或手动输入下方模型名</option></select></label>
+  <label>手动输入模型名<input id="manualModel" autocomplete="off" placeholder="输入服务商提供的完整模型 ID"></label>
+  <p>配置保存在本机。HTTP 地址可用但不加密，密钥和简历内容可能被网络中间方读取；建议优先使用 HTTPS。</p>
+  <label>导入简历 JSON 或 PDF<input id="import" type="file" accept=".json,.pdf,application/json,application/pdf"></label>
+  <p class="notice">PDF 文字会先在本机提取。点击“识别 PDF”后，提取出的文字会发送至上方 API，由模型整理成简历 JSON；保存前可检查和修改。</p>
+  <button type="button" id="parsePdf" hidden>识别 PDF</button>
+  <details id="pdfPreview" hidden open><summary>PDF 提取文字预览（可修改）</summary><textarea id="pdfText" aria-label="PDF 提取文字" maxlength="80000"></textarea></details>
   <label>简历 JSON<textarea id="profile" required></textarea></label>
-  <button type="submit">保存</button><button type="button" id="clear">删除本地数据</button>
+  <button type="submit" id="save">保存</button><button type="button" id="clear">删除本地数据</button>
 </form><p id="status" role="status"></p><script type="module" src="options.js"></script>
 </body></html>

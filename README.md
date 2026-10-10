@@ -1,44 +1,65 @@
-# AI 简历自动填充浏览器扩展
+# 简历智能填充浏览器扩展 0.3.0
 
-这是一个 Chrome/Edge Manifest V3 初版：扫描当前页面标准表单，把字段摘要和本地简历发送到可配置的 OpenAI-compatible API，展示结构化填写计划，用户逐项确认后才填入页面。不会自动点击提交按钮。
+Chrome / Edge Manifest V3 扩展：扫描招聘表单，调用自行配置的 OpenAI-compatible API 生成填写建议，由用户核对后填写。不会自动提交申请。
 
-## 加载
+## 安装 / 更新
 
-在 `chrome://extensions` 开启开发者模式，选择“加载已解压的扩展程序”，选择本项目目录（其中包含 `manifest.json`）。点击扩展图标打开侧边栏，先在“设置”保存 API Base URL、模型、密钥和简历 JSON，再扫描招聘表单。测试 `demo-form.html` 时，可用本地 HTTP 服务打开它；直接访问 `file://` 页面需要在扩展详情中开启“允许访问文件网址”。
+1. 下载项目 ZIP 并解压，或使用发布包解压目录；文件夹根目录必须有 `manifest.json`。
+2. 打开 `chrome://extensions` 或 `edge://extensions`，开启开发者模式，点击“加载已解压的扩展程序”，选择该目录。
+3. 更新现有扩展时，将新版覆盖到原加载目录，再点击扩展卡片的刷新按钮，关闭旧设置页并重新打开。相同加载目录一般能保留本地配置；加载另一个目录可能被当作另一个扩展。
+4. 本次新增普通 HTTP API 域名权限，浏览器可能要求重新授权。只在点击获取模型、识别 PDF 或保存时申请所填服务的域名权限。
 
-## 设计原则
+## 配置 API
 
-- AI 只做语义匹配和草拟计划；扩展只执行已扫描字段 ID，拒绝 CSS 选择器、脚本和未知字段。
-- 已填值默认跳过；覆盖需要用户勾选。模型缺少事实时提问，不虚构学历、时间、薪资、授权或同意声明。
-- 页面变化后计划失效，必须重新扫描；执行后重新读取并校验控件值。
-- API 密钥与简历放在 `chrome.storage.local`，不注入网页、不写日志。浏览器扩展存储并非加密保险库。
-- 首版支持标准 input、textarea、select、radio、checkbox；iframe、Shadow DOM、自定义控件、文件上传和动态经历区块通过站点适配器逐步加入。
+设置页依次填写 **API Base URL → API Key → 获取模型列表 → 选择模型**。
 
-## 目录规划
+- 支持 HTTP、HTTPS 及带端口地址，例如 `http://example.com/v1`。HTTP 不加密传输 Key 和简历内容；建议服务支持时优先使用 HTTPS。
+- 按服务商要求填写完整版本路径。若误粘贴 `/chat/completions` 或 `/models`，扩展会移除接口后缀，再追加所需接口。
+- 获取模型列表调用带该 Key 的 `GET /models`，读取 `data[].id`。列表不保证每个模型均支持聊天或当前 Key 均能成功调用。
+- 服务不支持模型列表时可手动填写模型 ID；手动输入优先于下拉框，重新选择下拉项会清空手动输入。
+- 填写计划及 PDF 识别调用 `POST /chat/completions`。不强制发送 `response_format`，兼容未实现此参数的服务；返回 JSON 仍经过代码验证。
+- 改变 API 地址会清空当前 Key，避免把旧服务密钥误发给另一个服务。
+- Key 与简历仅保存在 `chrome.storage.local`，不写入源码、日志或 Git；本地存储并非加密保险库。页面脚本不能读取存储中的 Key。
 
-```text
-manifest.json              扩展权限和入口
-background.js               API 调用、权限和模型响应校验
-content.js                  页面扫描、受约束填写、结果验证
-panel.html/js/css           扫描、预览、人工确认、执行
-options.html/js             API 与简历配置
-shared/plan.js              计划运行时校验
-demo-form.html              本地测试表单
-tests/                      计划契约测试
+## PDF 简历导入
+
+1. 在设置页选择 PDF（可选择文字的 PDF，最多 15 MB / 30 页）。
+2. 扩展使用随包附带的 PDF.js 在本地提取文字，展示可编辑预览。此阶段不向 API 上传文件。
+3. 检查提取文字后，点击 **识别 PDF**，将文字发送到配置的 API，由选定模型整理成简历 JSON。
+4. 核对姓名、联系方式、教育及工作经历，修改缺漏，再点击 **保存**。
+
+扫描图片型 PDF 尚未提供 OCR；完全无文字时提示先做 OCR，部分页面无文字时提示具体页码。加密、损坏或过大的 PDF 会报错，不覆盖已有简历。JSON 导入保留；`resume.example.json` 仅是虚构示例。简历 PDF 用来创建填表资料，不会自动上传到招聘网站的附件控件。
+
+## 填写
+
+打开招聘表单 → 点击扩展图标 → 扫描页面 → AI 生成计划 → 逐项核对勾选 → 填充已勾选项。
+
+- 默认保留已有内容，覆盖需单独勾选。
+- 同意/隐私条款类复选框由用户手动处理。
+- 仅支持顶层页面标准 input / textarea / select / radio / checkbox。自定义控件、iframe、Shadow DOM、动态增加经历和附件上传尚未支持。
+- 模型输出只允许使用本次扫描的字段 ID；填写后重新读取控件值校验。导航或字段变化时需要重新扫描。
+
+## 开发与打包
+
+```sh
+npm ci
+npm run check
+npm test
+npm run vendor
+npm run build
 ```
 
-下一步需要确定首个目标招聘网站和 API 协议；之后增加动态教育/工作经历、站点适配、PDF/DOCX 导入和开放题草稿。
+`npm run vendor` 从锁定版本 `pdfjs-dist` 复制浏览器运行文件、CMap、标准字体和许可到 `vendor/`。这些文件已纳入仓库，下载源码即可加载，无需安装 Node。`npm run build` 输出 `dist/unpacked`，ZIP 可用 PowerShell `Compress-Archive` 生成。
 
-## API 与简历
+浏览器测试使用 Playwright（自行安装或通过 `PLAYWRIGHT_PATH` 指定已有模块路径）及 Edge：
 
-设置页可导入 `resume.example.json`，修改为自己的资料后保存。该文件是虚构测试资料，不会自动代表你的真实简历。
+```sh
+node tests/browser-smoke.mjs
+node tests/settings-smoke.mjs
+```
 
-API 需要支持 Chat Completions 协议及 `response_format: {"type":"json_object"}`。Base URL 填写到版本路径，例如 `https://api.example.com/v1`，扩展会追加 `/chat/completions`；模型名称填写服务商提供的准确名称。密钥只在扩展设置中输入，无需放入源码。
+安装 Playwright Chromium 后，还可运行 `node tests/extension-smoke.mjs`，检查真实扩展加载及 PDF Worker 在扩展 CSP 下工作。
 
-操作顺序：打开求职表单 → 点击扩展图标 → 扫描页面 → AI 生成计划 → 核对并勾选字段 → 填充已勾选项。默认不覆盖已有值；如需要覆盖，在对应项目勾选“允许覆盖已有值”。同意条款类控件需在网站上手工确认。
+设置页测试实际运行 PDF.js 及 Worker，但 API 和 Chrome 权限使用模拟值，不代表真实 Key、服务商或真实招聘网站已验证。
 
-
-
-## 导入浏览器
-
-开发版使用解压目录加载：在扩展管理页开启开发者模式，选择本项目目录。发布 ZIP 解压后也按相同方式加载；Chrome/Edge 不允许直接把 ZIP 作为未打包扩展安装。
+PDF.js 6.4.299 及其许可保存在 `vendor/`；标准字体附带各自许可。`dist/`、`node_modules/`、本地密钥和私人简历不纳入版本控制。
