@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>设置</title><link rel="stylesheet" href="panel.css"></head>
+<body class="settings"><h1>API 与简历配置</h1>
+<form id="form">
+  <label>API Base URL<input id="baseUrl" type="url" placeholder="https://api.example.com/v1" required></label>
+  <label>模型<input id="model" required></label>
+  <label>密钥<input id="apiKey" type="password" autocomplete="off" required></label>
+  <p>本地保存；更换服务地址时请重新输入对应密钥。</p>
+  <label>导入简历 JSON<input id="import" type="file" accept=".json,application/json"></label>
+  <label>简历 JSON<textarea id="profile" required></textarea></label>
+  <button type="submit">保存</button><button type="button" id="clear">删除本地数据</button>
+</form><p id="status" role="status"></p><script type="module" src="options.js"></script>
+</body></html>

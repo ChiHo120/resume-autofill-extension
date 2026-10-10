@@ -1,0 +1,18 @@
+{
+  "basic": {
+    "fullName": "测试姓名",
+    "email": "demo@example.com",
+    "phone": "13800000000",
+    "city": "上海",
+    "degree": "本科"
+  },
+  "education": [
+    { "school": "示例大学", "major": "计算机科学", "degree": "本科", "startDate": "2018-09", "endDate": "2022-06" }
+  ],
+  "experience": [
+    { "company": "示例公司", "position": "软件工程师", "startDate": "2022-07", "endDate": "2025-06", "description": "负责内部业务系统的开发与维护。" }
+  ],
+  "projects": [],
+  "skills": ["JavaScript", "Python"],
+  "additionalAnswers": {}
+}

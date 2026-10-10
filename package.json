@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check background.js && node --check content.js && node --check panel.js && node --check options.js && node --check shared/plan.js",
+    "test": "node --test tests/plan.test.js"
+  }
+}

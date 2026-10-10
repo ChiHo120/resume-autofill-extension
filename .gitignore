@@ -1,0 +1,16 @@
+# Generated extension packages and unpacked build output
+dist/
+
+# Local credentials and personal resume data
+.env
+.env.*
+!.env.example
+*.local.json
+*.private.json
+resume.json
+my-resume.json
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
