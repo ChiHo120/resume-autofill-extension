@@ -42,6 +42,17 @@ try{
  const saved=await page.evaluate(()=>window.savedData);assert.equal(saved.config.baseUrl,'http://example.com/v1');assert.equal(saved.config.model,'exact Model ID');assert.equal(saved.profile.basic.fullName,'Demo Applicant');
  const messages=await page.evaluate(()=>window.messages);assert.equal(messages[0].type,'MODELS');assert.match(messages[1].text,/demo@example.com/);
  await page.locator('#manualModel').fill('custom-model');await page.locator('#save').click();await page.waitForFunction(()=>window.savedData.config.model==='custom-model');
+ const persisted=await page.evaluate(()=>window.savedData);
+ assert.match(persisted.resumeSource.data,/^data:application\/pdf;base64,/);
+ await page.addInitScript(data=>{chrome.storage.local.get=async()=>data;},persisted);
+ await page.reload();await page.waitForFunction(()=>document.querySelector('#apiKey').value==='test-key');
+ assert.equal(await page.locator('#manualModel').inputValue(),'custom-model');
+ assert.match(await page.locator('#pdfText').inputValue(),/Demo Applicant/);
+ const downloadPromise=page.waitForEvent('download');await page.locator('#backup').click();const download=await downloadPromise;
+ const backup=await fs.readFile(await download.path());assert.equal(JSON.parse(backup).config.apiKey,'test-key');
+ await page.locator('#backupFile').setInputFiles({name:'backup.json',mimeType:'application/json',buffer:backup});
+ await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('备份已恢复'));
+ assert.match(await page.locator('#profile').inputValue(),/Demo Applicant/);
  assert.deepEqual(errors,[]);
  await fs.mkdir('dist',{recursive:true});await page.screenshot({path:'dist/settings-preview.png',fullPage:true});
  console.log('Settings browser checks passed: HTTP config, models, real PDF worker text extraction, AI import, save, manual model. API and Chrome permissions mocked.');

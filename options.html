@@ -14,6 +14,7 @@
   <button type="button" id="parsePdf" hidden>识别 PDF</button>
   <details id="pdfPreview" hidden open><summary>PDF 提取文字预览（可修改）</summary><textarea id="pdfText" aria-label="PDF 提取文字" maxlength="80000"></textarea></details>
   <label>简历 JSON<textarea id="profile" required></textarea></label>
-  <button type="submit" id="save">保存</button><button type="button" id="clear">删除本地数据</button>
+  <button type="submit" id="save">保存</button><button type="button" id="backup">导出配置备份</button><button type="button" id="restore">导入配置备份</button><button type="button" id="clear">删除本地数据</button>
+  <input id="backupFile" type="file" accept="application/json,.json" hidden>
 </form><p id="status" role="status"></p><script type="module" src="options.js"></script>
 </body></html>
