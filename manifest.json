@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "简历智能填充",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "minimum_chrome_version": "116",
   "description": "扫描表单，使用可配置 AI 生成填写计划，经确认后填充。",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
-  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "host_permissions": ["https://*/*", "http://*/*"],
   "background": {"service_worker":"background.js","type":"module"},
   "side_panel":{"default_path":"panel.html"},
   "options_page":"options.html",

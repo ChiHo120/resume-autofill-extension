@@ -11,6 +11,18 @@ const context=await chromium.launchPersistentContext(profile,{channel:'chromium'
 try {
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker',{timeout:15000});
  const id=worker.url().split('/')[2];const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const manifest=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8'));
+ assert.deepEqual(manifest.host_permissions,['https://*/*','http://*/*']);
+ const recruitment=await context.newPage();
+ await recruitment.route('https://recruitment.example.test/**',route=>route.fulfill({contentType:'text/html',body:'<label>Name<input name="fullName"></label>'}));
+ await recruitment.goto('https://recruitment.example.test/apply');
+ const scanned=await worker.evaluate(async()=>{
+  const tabs=await chrome.tabs.query({url:'https://recruitment.example.test/*'});
+  await chrome.scripting.executeScript({target:{tabId:tabs[0].id},files:['content.js']});
+  return await chrome.tabs.sendMessage(tabs[0].id,{type:'SCAN'});
+ });
+ assert.equal(scanned.ok,true);assert.equal(scanned.fields[0].label,'Name');
+ await recruitment.close();
  await page.goto(`chrome-extension://${id}/options.html`);
  await page.waitForFunction(()=>document.querySelector('#profile').value.length>0);
  const invalid=await page.evaluate(()=>chrome.runtime.sendMessage({type:'MODELS',config:{baseUrl:'http://example.com/v1',apiKey:''}}));
