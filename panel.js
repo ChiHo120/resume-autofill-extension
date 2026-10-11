@@ -53,7 +53,7 @@ async function generate(analysisOnly){
     $('questions').replaceChildren();
     for(const item of plan.missing||[]){const field=rows.get(item.fieldId)?.field;if(!field)continue;const p=document.createElement('p');p.textContent='建议补充【'+field.label+'】：'+item.reason;$('questions').append(p);}
     for(const q of plan.questions){const p=document.createElement('p');p.textContent=q;$('questions').append(p);}
-    if(analysisOnly){status('缺项分析完成；可到设置补充简历，或继续生成计划。');return;}
+    if(analysisOnly){status('缺项分析完成；待补充项已同步到设置页。填写并提交补充后，请重新扫描并生成计划。');return;}
     for(const row of rows.values()){
       row.action=plan.actions.find(a=>a.fieldId===row.field.id)||null;row.check.checked=!!row.action;row.result.textContent='';
       row.suggestion.textContent=row.action?'建议：'+display(row.field,row.action.value,true)+'\n依据：'+row.action.reason:row.field.manualReason||(plan.missing||[]).find(m=>m.fieldId===row.field.id)?.reason||'需补充信息';
@@ -97,3 +97,10 @@ $('fill').onclick=async()=>{
 function invalidate(){if(scan){invalid=true;stopped=true;status('页面切换或加载更新，旧计划已失效，请重新扫描。');if(!busy)lock(false);}}
 chrome.tabs.onActivated.addListener(invalidate);
 chrome.tabs.onUpdated.addListener((id,change)=>{if(scan?.tabId===id&&(change.url||change.status==='loading'))invalidate();});
+chrome.storage.onChanged.addListener((changes,area)=>{
+  if(area==='local' && scan && ['config','profile','resumeSource','supplements'].some(key=>key in changes)){
+    invalid=true;stopped=true;
+    status('简历或补充信息已更新，旧计划已失效。请重新扫描并生成计划。');
+    if(!busy)lock(false);
+  }
+});

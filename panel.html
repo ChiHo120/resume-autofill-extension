@@ -3,7 +3,7 @@
 <body><h1>简历智能填充</h1><div class="toolbar"><button id="settings">设置</button><button id="scan">扫描页面</button></div>
 <label>扫描范围<select id="scope"><option value="page">当前页面全部已展示表单（含下方内容）</option><option value="viewport">仅当前屏幕可见区域</option></select></label>
 <div class="toolbar"><button id="analyze" disabled>AI 分析缺项</button><button id="plan" disabled>AI 生成计划</button></div>
-<p id="status" role="status">扫描后将按网页顺序列出字段。</p><p class="notice">AI 分析会发送当前字段和已保存简历。计划默认全选并覆盖已有值；缺失事实、只读项、附件和声明不自动填写。</p>
+<p id="status" role="status">扫描后将按网页顺序列出字段。</p><p class="notice">AI 分析会发送当前字段和已保存的简历、补充信息。缺项会自动同步到设置页，填写并提交后可重新生成计划。计划默认全选并覆盖已有值；缺失事实、只读项、附件和声明不自动填写。</p>
 <div class="toolbar"><button id="selectAll" disabled>全选可填项</button><button id="selectNone" disabled>取消全选</button><label><input id="overwrite" type="checkbox" checked>覆盖已有值</label></div>
 <div class="toolbar"><button id="fill" disabled>一键填充</button><button id="stop" disabled>停止后续填写</button></div>
 <div id="questions" aria-live="polite"></div><section id="actions" aria-label="与网页对应的字段清单"></section>

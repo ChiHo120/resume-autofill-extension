@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.PLAYWRIGHT_PATH||'playwright');
 const root=process.cwd();
 const profile=await mkdtemp(path.join(os.tmpdir(),'resume-extension-test-'));
-const context=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:true,args:[`--disable-extensions-except=${root}`,`--load-extension=${root}`]});
+const context=await chromium.launchPersistentContext(profile,{channel:process.env.PLAYWRIGHT_CHANNEL||'chromium',headless:true,timeout:20000,args:[`--disable-extensions-except=${root}`,`--load-extension=${root}`]});
 try {
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker',{timeout:15000});
  const id=worker.url().split('/')[2];const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -24,7 +24,7 @@ try {
  assert.equal(scanned.ok,true);assert.equal(scanned.fields[0].label,'Name');
  await recruitment.close();
  await page.goto(`chrome-extension://${id}/options.html`);
- await page.waitForFunction(()=>document.querySelector('#profile').value.length>0);
+ await page.waitForFunction(()=>!!document.querySelector('#infoSummary'));
  const invalid=await page.evaluate(()=>chrome.runtime.sendMessage({type:'MODELS',config:{baseUrl:'http://example.com/v1',apiKey:''}}));
  assert.equal(invalid.ok,false);assert.match(invalid.error,/Key/);
  await worker.evaluate(()=>{

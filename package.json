@@ -2,8 +2,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check background.js && node --check content.js && node --check panel.js && node --check options.js && node --check shared/plan.js && node --check shared/api.js && node --check shared/pdf.js",
-    "test": "node --test tests/plan.test.js tests/api.test.js tests/background.test.js",
+    "check": "node --check background.js && node --check content.js && node --check panel.js && node --check options.js && node --check shared/plan.js && node --check shared/api.js && node --check shared/pdf.js && node --check shared/resume.js",
+    "test": "node --test tests/plan.test.js tests/api.test.js tests/background.test.js tests/resume.test.js",
     "vendor": "node scripts/vendor.mjs",
     "build": "node scripts/build.mjs"
   },

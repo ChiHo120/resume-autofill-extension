@@ -9,12 +9,21 @@
   <label>模型<select id="model"><option value="">先获取模型列表，或手动输入下方模型名</option></select></label>
   <label>手动输入模型名<input id="manualModel" autocomplete="off" placeholder="输入服务商提供的完整模型 ID"></label>
   <p>配置保存在本机。HTTP 地址可用但不加密，密钥和简历内容可能被网络中间方读取；建议优先使用 HTTPS。</p>
-  <label>导入简历 JSON 或 PDF<input id="import" type="file" accept=".json,.pdf,application/json,application/pdf"></label>
-  <p class="notice">PDF 文字会先在本机提取。检查文字后可直接保存，无需填写简历 JSON；生成填表建议时会将这些文字发送至上方 API。也可点击“识别 PDF”，由模型整理成可编辑的简历 JSON。</p>
-  <button type="button" id="parsePdf" hidden>识别 PDF</button>
+  <label>导入 PDF 简历（兼容旧 JSON 文件）<input id="import" type="file" accept=".json,.pdf,application/json,application/pdf"></label>
+  <p class="notice">PDF 在本机提取文字，检查后即可保存。也可选择“整理 PDF 信息”调用 API 整理资料。生成填表建议时，会将简历和已提交的补充信息发送至你配置的 API。</p>
+  <button type="button" id="parsePdf" hidden>整理 PDF 信息（可选）</button>
   <details id="pdfPreview" hidden open><summary>PDF 提取文字预览（可修改）</summary><textarea id="pdfText" aria-label="PDF 提取文字" maxlength="80000"></textarea></details>
-  <label>简历 JSON（已导入 PDF 时可留空）<textarea id="profile"></textarea></label>
-  <button type="submit" id="save">保存</button><button type="button" id="backup">导出配置备份</button><button type="button" id="restore">导入配置备份</button><button type="button" id="clear">删除本地数据</button>
+  <section class="supplement-section" aria-labelledby="supplementTitle">
+    <h2 id="supplementTitle">补充个人信息</h2>
+    <p class="notice">右侧“AI 分析缺项”的建议会自动出现在这里。直接填写年龄等信息即可，无需 JSON。提交后会与 PDF 资料合并；同项冲突时优先使用你提交的补充值。</p>
+    <p id="supplementStatus" role="status"></p>
+    <div id="supplementFields"></div>
+    <div class="custom-supplement"><label>其他补充项名称<input id="customLabel" maxlength="300" placeholder="例如：年龄、到岗时间、期望城市"></label><button type="button" id="addSupplement">添加补充项</button></div>
+    <button type="submit" id="submitSupplements">提交补充并更新汇总</button>
+  </section>
+  <label>信息汇总<textarea id="infoSummary" readonly placeholder="导入简历、填写补充项并提交后，在这里查看合并后的全部信息。"></textarea></label>
+  <p id="summaryStatus" class="notice">汇总仅整理已有资料，不猜测缺失信息。填表使用最近一次保存的资料。</p>
+  <button type="submit" id="save">保存配置与信息</button><button type="button" id="backup">导出配置备份</button><button type="button" id="restore">导入配置备份</button><button type="button" id="clear">删除本地数据</button>
   <input id="backupFile" type="file" accept="application/json,.json" hidden>
 </form><p id="status" role="status"></p><script type="module" src="options.js"></script>
 </body></html>

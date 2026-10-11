@@ -1,3 +1,5 @@
+import { validateSupplements } from './resume.js';
+
 export function normalizeBaseUrl(value) {
   let url;
   try { url = new URL(String(value).trim()); } catch { throw new Error('请输入完整 API 地址，例如 http://example.com/v1'); }
@@ -34,7 +36,7 @@ export function validateProfile(profile) {
   return profile;
 }
 // PDF text is a complete resume source; structured JSON is optional in that case.
-export function validateResume(profile, source) {
+export function validateResume(profile, source, supplements = []) {
   if (source != null && (typeof source.text !== 'string' || source.text.length > 80000 || typeof source.name !== 'string' || source.name.length > 500 || (source.data && (typeof source.data !== 'string' || source.data.length > 22*1024*1024 || !/^data:application\/pdf;base64,[A-Za-z0-9+/]*={0,2}$/.test(source.data))))) {
     throw new Error('PDF 数据无效');
   }
@@ -42,8 +44,9 @@ export function validateResume(profile, source) {
     throw new Error('简历 JSON 必须是对象且不能超过 100 KB');
   }
   const pdfText = source?.text.trim() || '';
-  if (!pdfText) validateProfile(profile);
-  return {profile:profile ?? null,pdfText};
+  const answers = validateSupplements(supplements).filter(item=>item.value);
+  if (!pdfText && !answers.length) validateProfile(profile);
+  return {profile:profile ?? null,pdfText,...(answers.length?{supplements:answers}:{})};
 }
 export async function requestApi(config, endpoint, body, fetcher = fetch) {
   let response;
