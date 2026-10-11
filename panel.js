@@ -15,7 +15,8 @@ function render(next) {
   const busy=state.busy,scan=state.scan;
   for(const id of ['scan','scope'])$(id).disabled=busy;
   for(const id of ['plan','analyze'])$(id).disabled=busy||state.invalid||!scan?.fields.some(f=>!f.protected);
-  for(const id of ['fill','selectAll','selectNone'])$(id).disabled=busy||state.invalid||!state.plan?.actions.length;
+  $('fill').disabled=busy||state.invalid||!scan?.fields.some(f=>!f.protected)||!!(state.plan&&!state.plan.actions.length);
+  for(const id of ['selectAll','selectNone'])$(id).disabled=busy||state.invalid||!state.plan?.actions.length;
   $('overwrite').disabled=busy;$('stop').disabled=!busy||state.operation!=='FILL';
   $('questions').replaceChildren();
   for(const item of state.analysis?.missing||[]){const field=scan.fields.find(f=>f.id===item.fieldId);if(!field)continue;const p=document.createElement('p');p.textContent='建议补充【'+field.label+'】：'+item.reason;$('questions').append(p);}

@@ -50,5 +50,15 @@ try{
  const native=scan.fields.find(f=>f.kind==='select');
  opened=await page.evaluate(m=>send(m),{...base,type:'OPEN_OPTIONS',fieldId:native.id});
  assert.deepEqual(opened.options.map(o=>o.label),['本科']);
+ await page.evaluate(()=>{
+   const row=document.createElement('div');row.innerHTML='<div class="caption">工作城市</div><div class="custom-select-box"><span class="value"></span></div>';document.body.append(row);
+   const box=row.querySelector('.custom-select-box');box.onclick=()=>{if(document.querySelector('.custom-options'))return;const popup=document.createElement('div');popup.className='custom-options';for(const label of ['上海','北京']){const option=document.createElement('div');option.className='custom-option';option.textContent=label;option.onclick=()=>{box.querySelector('.value').textContent=label;popup.remove();};popup.append(option);}document.body.append(popup);};
+ });
+ const generic=await page.evaluate(()=>send({type:'SCAN'}));
+ const city=generic.fields.find(f=>f.label.includes('工作城市'));assert.equal(city.kind,'custom-select');
+ const genericOpened=await page.evaluate(m=>send(m),{token:generic.token,url:generic.url,type:'OPEN_OPTIONS',fieldId:city.id});
+ assert.deepEqual(genericOpened.options.map(o=>o.label),['上海','北京']);
+ const genericFilled=await page.evaluate(m=>send(m),{token:generic.token,url:generic.url,type:'FILL',actions:[{fieldId:city.id,value:genericOpened.options[0].id,sessionId:genericOpened.sessionId,overwrite:true}]});
+ assert.equal(genericFilled.results[0].ok,true);
  console.log('PASS: adjacent labels, iView dropdowns, school search, async options, no navigation options, preview search restored, real option clicks and native placeholder filtering.');
 }finally{await browser.close();}

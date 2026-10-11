@@ -79,8 +79,16 @@ export function createTasks(chrome, callApi) {
           state.status=`计划就绪：${plan.actions.length} 项默认全选；已逐个检查 ${dropdowns.length} 个下拉框，${plan.missing.length} 项待补充。`;
         }
       } else if(request.action==='FILL') {
-        const chosen=new Set(request.chosen || []);
-        const actions=state.plan.actions.filter(a=>chosen.has(a.fieldId));
+        const autoPlan=!state.plan;
+        if(autoPlan){
+          const dropdowns=state.scan.fields.filter(f=>!f.protected&&['select','custom-select'].includes(f.kind));
+          if(dropdowns.length)throw new Error('页面包含下拉框，请先点击“AI 生成计划”逐个确认下拉选项');
+          state.status='正在为文字字段生成填写内容…';await saveJob(job);
+          const result=await callApi({type:'PLAN',fields:state.scan.fields.filter(f=>!f.protected)});
+          state.plan=result.plan;state.analysis=result.plan;state.results=[];
+        }
+        const chosen=autoPlan?null:new Set(request.chosen || []);
+        const actions=chosen?state.plan.actions.filter(a=>chosen.has(a.fieldId)):state.plan.actions;
         if(!actions.length)throw new Error('请选择可填项');
         state.results=[];
         for(const [index,planned] of actions.entries()) {
@@ -130,7 +138,6 @@ export function createTasks(chrome, callApi) {
       job.state=saved || job.state;
       const state=job.state;
       if(request.action!=='SCAN' && (!state.scan || state.invalid))throw new Error('请先扫描原招聘页面');
-      if(request.action==='FILL'&&!state.plan)throw new Error('请先生成填写计划');
       if(request.action==='SCAN'){state.invalid=false;state.scan=null;state.plan=null;state.analysis=null;state.results=[];}
       if(request.action==='PLAN')state.plan=null;
       state.busy=true;state.operation=request.action;

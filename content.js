@@ -1,14 +1,14 @@
 (() => {
-  const VERSION = '0.5.4';
+  const VERSION = '0.5.6';
   if (globalThis.__resumeFill?.version === VERSION) return;
   if (globalThis.__resumeFill?.listener) chrome.runtime.onMessage.removeListener(globalThis.__resumeFill.listener);
   let token = '', scanUrl = '', entries = new Map(), session = null, running = false;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
   const text = e => clean(e?.innerText || e?.textContent).slice(0, 250);
-  const widgetSelector = '[role="combobox"],[aria-haspopup="listbox"],.ant-select,.semi-select,.el-select,.arco-select,.ivu-select,.rc-select,.select2-container,.v-select,.n-select,.ant-cascader,.el-cascader';
-  const popupSelector = '[role="listbox"],.ant-select-dropdown,.semi-select-option-list,.el-select-dropdown,.arco-select-popup,.ivu-select-dropdown,.rc-virtual-list,.select2-dropdown,.vs__dropdown-menu,.n-base-select-menu';
-  const optionSelector = '[role="option"],.ant-select-item-option,.semi-select-option,.el-select-dropdown__item,.arco-select-option,.ivu-select-item,.select2-results__option,.vs__dropdown-option,.n-base-select-option';
+  const widgetSelector = '[role="combobox"],[aria-haspopup="listbox"],.ant-select,.semi-select,.el-select,.arco-select,.ivu-select,.rc-select,.select2-container,.v-select,.n-select,.ant-cascader,.el-cascader,[class*="select"],[class*="Select"]';
+  const popupSelector = '[role="listbox"],.ant-select-dropdown,.semi-select-option-list,.el-select-dropdown,.arco-select-popup,.ivu-select-dropdown,.rc-virtual-list,.select2-dropdown,.vs__dropdown-menu,.n-base-select-menu,[class*="options"],[class*="Options"],[class*="dropdown"],[class*="Dropdown"]';
+  const optionSelector = '[role="option"],.ant-select-item-option,.semi-select-option,.el-select-dropdown__item,.arco-select-option,.ivu-select-item,.select2-results__option,.vs__dropdown-option,.n-base-select-option,[class*="option"],[class*="Option"]';
   const itemSelector = '.ant-form-item,.semi-form-field,.el-form-item,.arco-form-item,.ivu-form-item,.form-item,[data-field],fieldset';
   const labelSelector = '.ant-form-item-label,.semi-form-field-label,.el-form-item__label,.arco-form-item-label,.ivu-form-item-label,.form-item-label,[data-field-label],legend';
   function visible(e) {
@@ -47,7 +47,7 @@
   function read(entry) {
     const e = entry.e;
     if (entry.kind === 'custom-select') {
-      const selected = e.querySelector('.ant-select-selection-item,.semi-select-selection,.el-select__selected-item:not(.is-placeholder),.arco-select-view-value,.ivu-select-selected-value,.select2-selection__rendered,.vs__selected,.n-base-selection-label');
+      const selected = e.querySelector('.ant-select-selection-item,.semi-select-selection,.el-select__selected-item:not(.is-placeholder),.arco-select-view-value,.ivu-select-selected-value,.select2-selection__rendered,.vs__selected,.n-base-selection-label,[class*="selected"],[class*="Selected"],[class*="value"],[class*="Value"]');
       if (selected) return text(selected);
       const input = e.matches('input') ? e : e.querySelector('input');
       return clean(input?.value || e.getAttribute('data-value') || (e.matches('[role="combobox"]') ? e.innerText : ''));
@@ -79,7 +79,15 @@
     }
     return [...nodes].sort((a,b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
   }
-  function scan(m) {
+  async function revealPage() {
+    const originalX=scrollX, originalY=scrollY;
+    const height=Math.max(document.documentElement.scrollHeight,document.body?.scrollHeight||0);
+    const step=Math.max(300,Math.floor(innerHeight*.85));
+    for(let y=0;y<=height;y+=step){window.scrollTo(0,y);window.dispatchEvent(new Event('scroll'));await wait(25);}
+    window.scrollTo(originalX,originalY);await wait(25);
+  }
+  async function scan(m) {
+    if(m.scope!=='viewport')await revealPage();
     token = crypto.randomUUID(); scanUrl = location.href; entries = new Map(); session = null;
     const nodes = collect(m.scope); const fields = [];
     for (const e of nodes.slice(0,200)) {
@@ -89,7 +97,7 @@
       const f = {id:'f'+fields.length,kind,label:name,inputType:e.type || e.getAttribute('role') || 'text',required:!!e.required || e.getAttribute('aria-required')==='true' || /\*/.test(itemLabel(e)),currentValue:read(entry),group:e.name || '',section:text(container?.querySelector('legend,h2,h3,[data-section-title]')),manualReason:reason,protected:!!reason,options:kind==='select'?Array.from(e.options).map((o,i)=>({id:'o'+i,label:text(o),disabled:o.disabled||!!o.closest('optgroup:disabled')})).filter(o=>!o.disabled):undefined};
       entry.f=f;entries.set(f.id,entry);fields.push(f);
     }
-    return {ok:true,token,url:scanUrl,fields,warnings:[...(nodes.length>200?['字段超过 200 项，请按当前可见区域分批扫描']:[]),...(document.querySelector('iframe')?['页面包含 iframe；本次仅扫描顶层页面']:[])]};
+    return {ok:true,token,url:scanUrl,fields,warnings:[...(nodes.length>200?['字段超过 200 项，请分段扫描或减少页面中的重复字段']:[]),...(document.querySelector('iframe')?['页面包含 iframe；本次仅扫描顶层页面']:[])]};
   }
   function checked(m, id) {
     if (m.token !== token || location.href !== scanUrl || m.url !== scanUrl) throw new Error('页面或扫描已变化，请重新扫描');
@@ -122,7 +130,7 @@
       for (const node of entry.e.options) if (!node.disabled && !node.closest('optgroup:disabled') && node.value.trim() && !/^(请选择|请选择.*|Select|Choose)$/i.test(text(node))) optionNodes.push(node);
     } else {
       const before = new Set(Array.from(document.querySelectorAll(popupSelector)).filter(visible));
-      const trigger = entry.e.matches('input,[role="combobox"]') ? entry.e : entry.e.querySelector('input[role="combobox"],[role="combobox"],input,.ant-select-selector,.semi-select-selection,.el-select__wrapper,.el-input__wrapper,.ivu-select-selection') || entry.e;
+      const trigger = entry.e.matches('input,[role="combobox"],button,[role="button"]') ? entry.e : entry.e.querySelector('input[role="combobox"],[role="combobox"],input,button,[role="button"],.ant-select-selector,.semi-select-selection,.el-select__wrapper,.el-input__wrapper,.ivu-select-selection') || entry.e;
       if (trigger.getAttribute('aria-expanded') !== 'true') {trigger.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));trigger.click();}
       const searchInput=entry.e.matches('input:not([readonly])')?entry.e:entry.e.querySelector('input:not([readonly])');
       const previousSearchValue=session?.fieldId===m.fieldId ? session.previousSearchValue : searchInput?.value || '';
@@ -205,7 +213,7 @@
     return {ok:true,results};
   }
   async function handle(m) {
-    if(m.type==='SCAN')return scan(m);
+    if(m.type==='SCAN')return await scan(m);
     if(m.type==='OPEN_OPTIONS')return await openOptions(m);
     if(m.type==='CLOSE_OPTIONS')return closeOptions(m);
     if(m.type==='FILL')return await fill(m);

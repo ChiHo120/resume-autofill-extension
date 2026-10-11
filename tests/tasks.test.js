@@ -66,3 +66,13 @@ test('plan inspects every dropdown, displays actual choices, and filling refuses
  assert.match(filled.results[1].error,/变化/);
  assert.equal(messages.filter(m=>m.type==='FILL').length,1);
 });
+
+test('one-click fill auto-generates a plan for pages without dropdowns',async()=>{
+ const f=fixture(async request=>request.type==='PLAN'?{plan:{actions:[{fieldId:'age',value:'22',reason:'resume fact'}],missing:[],questions:[]}}:{ok:true});
+ f.chrome.tabs.sendMessage=async(id,m)=>{f.calls.push({id,m});if(m.type==='SCAN')return {ok:true,url:'https://example.test/'+id,token:'token-'+id,fields:[{id:'age',label:'年龄',kind:'text'}]};if(m.type==='FILL')return {ok:true,results:[{fieldId:'age',ok:true,value:'22'}]};return {ok:true,results:[]};};
+ await f.tasks.start(1,{action:'SCAN'});await done(f.tasks,1);
+ await f.tasks.start(1,{action:'FILL'});const state=await done(f.tasks,1);
+ assert.equal(state.plan.actions[0].value,'22');
+ assert.equal(state.results[0].ok,true);
+ assert.equal(f.calls.filter(({m})=>m.type==='FILL').length,1);
+});
