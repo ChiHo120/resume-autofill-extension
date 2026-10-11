@@ -1,4 +1,4 @@
-import { normalizeBaseUrl, permissionOrigin, validateConfig, validateProfile } from './shared/api.js';
+import { normalizeBaseUrl, permissionOrigin, validateConfig, validateProfile, validateResume } from './shared/api.js';
 import { extractPdfText } from './shared/pdf.js';
 const $ = id => document.getElementById(id);
 const example = {basic:{fullName:'',email:''},education:[],experience:[],projects:[],skills:[]};
@@ -29,7 +29,7 @@ $('baseUrl').value = saved.config?.baseUrl || '';
 $('apiKey').value = saved.config?.apiKey || '';
 $('manualModel').value = saved.config?.model || '';
 populateModels([]);
-$('profile').value = JSON.stringify(saved.profile || example,null,2);
+$('profile').value = saved.profile === null ? '' : JSON.stringify(saved.profile || example,null,2);
 if (saved.resumeSource?.text) {
   pdfText = saved.resumeSource.text; pdfFileName = saved.resumeSource.name || 'resume.pdf'; pdfData = saved.resumeSource.data || ''; 
   $('pdfText').value = pdfText; $('pdfPreview').hidden = false; $('parsePdf').hidden = false;
@@ -61,7 +61,7 @@ $('import').onchange=async()=>{
     if(file.name.toLowerCase().endsWith('.pdf')) {
       const result=await extractPdfText(file,(page,total)=>status('正在本地提取 PDF：'+page+'/'+total+' 页'));
       pdfData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('PDF 读取失败'));reader.readAsDataURL(file);}); pdfText=result.text; pdfFileName=file.name; $('pdfText').value=pdfText;$('pdfPreview').hidden=false;$('parsePdf').hidden=false;
-      status('已提取 '+result.pages+' 页、'+pdfText.length+' 个字符。请检查文字，再点击“识别 PDF”。'+(result.emptyPages.length?'第 '+result.emptyPages.join('、')+' 页没有提取到文字，可能需要 OCR。':''));
+      status('已提取 '+result.pages+' 页、'+pdfText.length+' 个字符。检查文字后可直接保存，无需填写 JSON；也可点击“识别 PDF”生成 JSON。'+(result.emptyPages.length?'第 '+result.emptyPages.join('、')+' 页没有提取到文字，可能需要 OCR。':''));
     } else if(file.name.toLowerCase().endsWith('.json')) {
       if(file.size>100000)throw new Error('简历 JSON 不能超过 100 KB');
       const profile=validateProfile(JSON.parse((await file.text()).replace(/^\uFEFF/,'')));
@@ -85,10 +85,11 @@ $('parsePdf').onclick=async()=>{
 $('form').onsubmit=async e=>{
   e.preventDefault();if(busy)return;
   try {
-    const config=configFromForm();const profile=validateProfile(JSON.parse($('profile').value));
+    const config=configFromForm();const profile=$('profile').value.trim() ? JSON.parse($('profile').value) : null;
+    const resumeSource = pdfText ? {name:pdfFileName || 'resume.pdf', text:$('pdfText').value, data:pdfData, savedAt:new Date().toISOString()} : null;
+    validateResume(profile,resumeSource);
     const permission=authorize(config);lock(true);
     if(!await permission)throw new Error('未授权 API 域名访问');
-    const resumeSource = pdfText ? {name:pdfFileName || 'resume.pdf', text:$('pdfText').value, data:pdfData, savedAt:new Date().toISOString()} : null;
     await chrome.storage.local.set({config,profile,resumeSource});$('baseUrl').value=normalizeBaseUrl(config.baseUrl);
     status('已保存 API 配置和简历，可回到招聘页面开始填充。');
   }catch(e){status(e.message);}finally{lock(false);}
@@ -96,7 +97,8 @@ $('form').onsubmit=async e=>{
 $('backup').onclick=async()=>{
   try {
     const current=await chrome.storage.local.get(['config','profile','resumeSource']);
-    if(!current.config||!current.profile) throw new Error('请先保存 API 和简历');
+    if(!current.config) throw new Error('请先保存 API 和简历');
+    validateResume(current.profile,current.resumeSource);
     const blob=new Blob([JSON.stringify({version:1,exportedAt:new Date().toISOString(),...current},null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='resume-autofill-backup.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     status('已导出配置备份。备份包含 API Key，请妥善保管，不要提交到 GitHub。');
@@ -108,12 +110,11 @@ $('backupFile').onchange=async()=>{
   try {
     if(file.size>23*1024*1024)throw new Error('备份文件过大');
     const data=JSON.parse((await file.text()).replace(/^\uFEFF/,''));
-    const config=validateConfig(data.config);const profile=validateProfile(data.profile);
+    const config=validateConfig(data.config);const profile=data.profile ?? null;
     if(data.version!==1)throw new Error('不支持的备份版本');
-    const source=data.resumeSource;
-    if(source!=null && (typeof source.text!=='string'||source.text.length>80000||typeof source.name!=='string'||source.name.length>500|| (source.data && (typeof source.data!=='string'||source.data.length>22*1024*1024||!/^data:application\/pdf;base64,[A-Za-z0-9+/]*={0,2}$/.test(source.data)))))throw new Error('备份中的 PDF 数据无效');
+    validateResume(profile,data.resumeSource);
     await chrome.storage.local.set({config,profile,resumeSource:data.resumeSource || null});
-    $('baseUrl').value=config.baseUrl;$('apiKey').value=config.apiKey;$('manualModel').value=config.model;$('profile').value=JSON.stringify(profile,null,2);
+    $('baseUrl').value=config.baseUrl;$('apiKey').value=config.apiKey;$('manualModel').value=config.model;$('profile').value=profile === null ? '' : JSON.stringify(profile,null,2);
     populateModels([]);pdfText='';pdfFileName='';pdfData='';$('pdfText').value='';$('pdfPreview').hidden=true;$('parsePdf').hidden=true;
     if(data.resumeSource?.text){pdfData=data.resumeSource.data||'';$('parsePdf').hidden=false;pdfText=data.resumeSource.text;pdfFileName=data.resumeSource.name||'resume.pdf';$('pdfText').value=pdfText;$('pdfPreview').hidden=false;}
     status('备份已恢复。请检查 API 地址和简历后继续使用。');

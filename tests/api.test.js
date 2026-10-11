@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeBaseUrl,permissionOrigin,validateConfig,parseModels,parseJsonResponse,validateProfile,requestApi,chatJson} from '../shared/api.js';
+import {normalizeBaseUrl,permissionOrigin,validateConfig,parseModels,parseJsonResponse,validateProfile,validateResume,requestApi,chatJson} from '../shared/api.js';
 test('remote HTTP and endpoint normalization',()=>{
  assert.equal(normalizeBaseUrl(' http://example.com/v1/ '),'http://example.com/v1');
  assert.equal(normalizeBaseUrl('https://example.com/v1/chat/completions'),'https://example.com/v1');
@@ -18,6 +18,18 @@ test('JSON response and profile validation',()=>{
  assert.throws(()=>parseJsonResponse('not json'));
  assert.throws(()=>validateProfile({basic:{fullName:''}}));
  assert.equal(validateProfile({basic:{fullName:'Demo'}}).basic.fullName,'Demo');
+});
+test('PDF-only resumes accept missing JSON and the default empty template',()=>{
+ const source={name:'resume.pdf',text:' Demo Applicant - Engineer ',data:'data:application/pdf;base64,JVBERg=='};
+ for(const profile of [null,undefined,{}, {basic:{fullName:'',email:''},education:[],experience:[],projects:[],skills:[]}]) {
+  assert.deepEqual(validateResume(profile,source),{profile:profile??null,pdfText:'Demo Applicant - Engineer'});
+ }
+ const profile={basic:{fullName:'Demo'}};
+ assert.deepEqual(validateResume(profile,null),{profile,pdfText:''});
+ for(const text of ['', '   ']) assert.throws(()=>validateResume(null,{name:'empty.pdf',text}));
+ assert.throws(()=>validateResume(null,null));
+ for(const profile of [[], 'invalid', {note:'x'.repeat(100001)}]) assert.throws(()=>validateResume(profile,source));
+ for(const source of [{name:'x',text:1},{name:'x',text:'x'.repeat(80001)},{name:'x',text:'Demo',data:'invalid'}]) assert.throws(()=>validateResume(null,source));
 });
 test('API requests use requested HTTP address and preserve server model ID',async()=>{
  const config={baseUrl:'http://example.com/v1',apiKey:'test-only',model:'exact Model ID'};

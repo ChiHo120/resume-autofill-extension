@@ -33,6 +33,18 @@ export function validateProfile(profile) {
   if (JSON.stringify(profile).length > 100000) throw new Error('简历内容过大');
   return profile;
 }
+// PDF text is a complete resume source; structured JSON is optional in that case.
+export function validateResume(profile, source) {
+  if (source != null && (typeof source.text !== 'string' || source.text.length > 80000 || typeof source.name !== 'string' || source.name.length > 500 || (source.data && (typeof source.data !== 'string' || source.data.length > 22*1024*1024 || !/^data:application\/pdf;base64,[A-Za-z0-9+/]*={0,2}$/.test(source.data))))) {
+    throw new Error('PDF 数据无效');
+  }
+  if (profile != null && (typeof profile !== 'object' || Array.isArray(profile) || JSON.stringify(profile).length > 100000)) {
+    throw new Error('简历 JSON 必须是对象且不能超过 100 KB');
+  }
+  const pdfText = source?.text.trim() || '';
+  if (!pdfText) validateProfile(profile);
+  return {profile:profile ?? null,pdfText};
+}
 export async function requestApi(config, endpoint, body, fetcher = fetch) {
   let response;
   try {
