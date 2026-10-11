@@ -62,6 +62,11 @@ try{
  await settings.locator('#supplementFields textarea').waitFor();
  assert.match(await settings.locator('#supplementFields').innerText(),/待补充：年龄/);
  await panel.locator('#plan').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('计划就绪'));
+ assert.match(await panel.locator('.field').nth(1).innerText(),/计划填充：上海/);
+ assert.match(await panel.locator('.field').nth(2).innerText(),/计划填充：本科/);
+ assert.equal((await worker.evaluate(()=>globalThis.optionCalls)).length,2);
+ assert.equal(await target.locator('.ant-select-selection-item').innerText(),'');
+ assert.equal(await target.locator('#degree').inputValue(),'');
  assert.equal(await panel.locator('.chosen:checked').count(),4);assert.equal(await panel.locator('#overwrite').isChecked(),true);
  await panel.locator('#selectNone').click();assert.equal(await panel.locator('.chosen:checked').count(),0);
  await panel.locator('#selectAll').click();assert.equal(await panel.locator('.chosen:checked').count(),4);

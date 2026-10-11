@@ -30,7 +30,7 @@ function render(next) {
     const locate=document.createElement('button');locate.textContent='定位原页面';locate.disabled=busy||state.invalid;locate.onclick=()=>send({type:'TAB_LOCATE',fieldId:field.id}).catch(e=>status(e.message));
     const current=document.createElement('p');current.className='reason';current.textContent='当前：'+display(field,result?.ok?result.value:field.currentValue);
     const suggestion=document.createElement('p');suggestion.className='value';
-    suggestion.textContent=action?'建议：'+(field.kind==='select'?field.options?.find(o=>o.id===action.value)?.label || action.value:display(field,action.value))+'\n依据：'+action.reason:field.manualReason||state.analysis?.missing.find(m=>m.fieldId===field.id)?.reason||'待 AI 分析';
+    suggestion.textContent=action?'计划填充：'+(action.optionLabel || (field.kind==='select'?field.options?.find(o=>o.id===action.value)?.label:undefined) || display(field,action.value))+'\n依据：'+action.reason:field.manualReason||state.analysis?.missing.find(m=>m.fieldId===field.id)?.reason||'待 AI 分析';
     const feedback=document.createElement('p');feedback.className='result';feedback.textContent=result?(result.ok?'已填写并校验':result.error):'';
     box.append(heading,locate,current,suggestion,feedback);$('actions').append(box);
   }

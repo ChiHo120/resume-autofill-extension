@@ -1,22 +1,31 @@
 (() => {
-  const VERSION = '0.5.3';
+  const VERSION = '0.5.4';
   if (globalThis.__resumeFill?.version === VERSION) return;
   if (globalThis.__resumeFill?.listener) chrome.runtime.onMessage.removeListener(globalThis.__resumeFill.listener);
   let token = '', scanUrl = '', entries = new Map(), session = null, running = false;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
   const text = e => clean(e?.innerText || e?.textContent).slice(0, 250);
-  const widgetSelector = '[role="combobox"],.ant-select,.semi-select,.el-select,.arco-select,.ant-cascader,.el-cascader';
-  const popupSelector = '[role="listbox"],.ant-select-dropdown,.semi-select-option-list,.el-select-dropdown,.arco-select-popup';
-  const optionSelector = '[role="option"],.ant-select-item-option,.semi-select-option,.el-select-dropdown__item,.arco-select-option';
-  const itemSelector = '.ant-form-item,.semi-form-field,.el-form-item,.arco-form-item,.form-item,[data-field],fieldset';
-  const labelSelector = '.ant-form-item-label,.semi-form-field-label,.el-form-item__label,.arco-form-item-label,.form-item-label,[data-field-label],legend';
+  const widgetSelector = '[role="combobox"],[aria-haspopup="listbox"],.ant-select,.semi-select,.el-select,.arco-select,.ivu-select,.rc-select,.select2-container,.v-select,.n-select,.ant-cascader,.el-cascader';
+  const popupSelector = '[role="listbox"],.ant-select-dropdown,.semi-select-option-list,.el-select-dropdown,.arco-select-popup,.ivu-select-dropdown,.rc-virtual-list,.select2-dropdown,.vs__dropdown-menu,.n-base-select-menu';
+  const optionSelector = '[role="option"],.ant-select-item-option,.semi-select-option,.el-select-dropdown__item,.arco-select-option,.ivu-select-item,.select2-results__option,.vs__dropdown-option,.n-base-select-option';
+  const itemSelector = '.ant-form-item,.semi-form-field,.el-form-item,.arco-form-item,.ivu-form-item,.form-item,[data-field],fieldset';
+  const labelSelector = '.ant-form-item-label,.semi-form-field-label,.el-form-item__label,.arco-form-item-label,.ivu-form-item-label,.form-item-label,[data-field-label],legend';
   function visible(e) {
     return !!e?.isConnected && !e.closest('[hidden],[aria-hidden="true"],[inert]') && e.getClientRects().length > 0 && !['hidden','collapse'].includes(getComputedStyle(e).visibility);
   }
   function itemLabel(e) {
     const box = e.closest(itemSelector);
-    if (box) return text(box.querySelector(labelSelector) || box.querySelector('label'));
+    if (box) {const found=text(box.querySelector(labelSelector) || box.querySelector('label'));if(found)return found;}
+    let branch=e;
+    for(let depth=0;branch?.parentElement && depth<4;depth++,branch=branch.parentElement){
+      for(let sibling=branch.previousElementSibling,steps=0;sibling&&steps<3;sibling=sibling.previousElementSibling,steps++){
+        if(sibling.querySelector('input,select,textarea,'+widgetSelector))continue;
+        const candidate=text(sibling.querySelector('label,'+labelSelector) || sibling);
+        if(candidate&&candidate.length<80&&!/^(请输入|请选择|选择|输入)$/.test(candidate))return candidate;
+      }
+      if(branch.parentElement.matches('body,form'))break;
+    }
     // Only examine a bounded local container; do not take arbitrary body text.
     let parent = e.parentElement;
     for (let depth = 0; parent && depth < 3; depth++, parent = parent.parentElement) {
@@ -31,13 +40,14 @@
     const own = Array.from(e.labels || []).map(text).join(' ') || e.getAttribute('aria-label') || refs;
     const context = itemLabel(e);
     if (['radio','checkbox'].includes(e.type) && context && own && context !== own) return context+' / '+own;
-    return clean(own || context || e.placeholder || e.name).slice(0,250);
+    const generic = /^(请输入|请选择|请选择.*日期|输入|选择)(.*)?$/.test(clean(own));
+    return clean((generic?context:own) || context || e.placeholder || e.name).slice(0,250);
   }
   const protectedLabel = str => /同意|隐私|条款|协议|声明|承诺|consent|agree|terms|privacy|declaration|authorize|certify/i.test(str);
   function read(entry) {
     const e = entry.e;
     if (entry.kind === 'custom-select') {
-      const selected = e.querySelector('.ant-select-selection-item,.semi-select-selection,.el-select__selected-item:not(.is-placeholder),.arco-select-view-value');
+      const selected = e.querySelector('.ant-select-selection-item,.semi-select-selection,.el-select__selected-item:not(.is-placeholder),.arco-select-view-value,.ivu-select-selected-value,.select2-selection__rendered,.vs__selected,.n-base-selection-label');
       if (selected) return text(selected);
       const input = e.matches('input') ? e : e.querySelector('input');
       return clean(input?.value || e.getAttribute('data-value') || (e.matches('[role="combobox"]') ? e.innerText : ''));
@@ -73,7 +83,7 @@
     token = crypto.randomUUID(); scanUrl = location.href; entries = new Map(); session = null;
     const nodes = collect(m.scope); const fields = [];
     for (const e of nodes.slice(0,200)) {
-      const kind = e.matches(widgetSelector) ? 'custom-select' : e.tagName === 'SELECT' ? 'select' : ['radio','checkbox','file'].includes(e.type) ? e.type : 'text';
+      const kind = e.tagName === 'SELECT' ? 'select' : e.matches(widgetSelector) ? 'custom-select' : ['radio','checkbox','file'].includes(e.type) ? e.type : 'text';
       const entry = {e,kind}; const name = label(e) || '未标注字段'; const reason = manualReason(e,kind,name);
       const container = e.closest('section,fieldset,[data-section]');
       const f = {id:'f'+fields.length,kind,label:name,inputType:e.type || e.getAttribute('role') || 'text',required:!!e.required || e.getAttribute('aria-required')==='true' || /\*/.test(itemLabel(e)),currentValue:read(entry),group:e.name || '',section:text(container?.querySelector('legend,h2,h3,[data-section-title]')),manualReason:reason,protected:!!reason,options:kind==='select'?Array.from(e.options).map((o,i)=>({id:'o'+i,label:text(o),disabled:o.disabled||!!o.closest('optgroup:disabled')})).filter(o=>!o.disabled):undefined};
@@ -100,6 +110,7 @@
     // Common component wrappers contain the ARIA listbox. Choose the unique outer popup.
     const roots = fresh.filter(e=>!fresh.some(other=>other!==e && other.contains(e)));
     if (roots.length === 1) return roots[0];
+    if(entry.popup?.isConnected&&visible(entry.popup))return entry.popup;
     return null;
   }
   async function openOptions(m) {
@@ -108,24 +119,48 @@
     const optionNodes = [];
     if (entry.kind === 'select') {
       // Native select options already exist in the DOM; showing the OS popup is unnecessary.
-      for (const node of entry.e.options) if (!node.disabled && !node.closest('optgroup:disabled')) optionNodes.push(node);
+      for (const node of entry.e.options) if (!node.disabled && !node.closest('optgroup:disabled') && node.value.trim() && !/^(请选择|请选择.*|Select|Choose)$/i.test(text(node))) optionNodes.push(node);
     } else {
       const before = new Set(Array.from(document.querySelectorAll(popupSelector)).filter(visible));
-      const trigger = entry.e.matches('input,[role="combobox"]') ? entry.e : entry.e.querySelector('[role="combobox"],.ant-select-selector,.semi-select-selection,.el-select__wrapper,.el-input__wrapper') || entry.e;
+      const trigger = entry.e.matches('input,[role="combobox"]') ? entry.e : entry.e.querySelector('input[role="combobox"],[role="combobox"],input,.ant-select-selector,.semi-select-selection,.el-select__wrapper,.el-input__wrapper,.ivu-select-selection') || entry.e;
       if (trigger.getAttribute('aria-expanded') !== 'true') {trigger.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));trigger.click();}
+      const searchInput=entry.e.matches('input:not([readonly])')?entry.e:entry.e.querySelector('input:not([readonly])');
+      const previousSearchValue=session?.fieldId===m.fieldId ? session.previousSearchValue : searchInput?.value || '';
+      if(m.query && searchInput){
+        if(typeof m.query!=='string'||m.query.length>100)throw new Error('搜索词无效');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(searchInput,m.query);
+        searchInput.dispatchEvent(new Event('input',{bubbles:true}));
+        searchInput.dispatchEvent(new Event('change',{bubbles:true}));
+      }
       let popup;
       for (let retry=0;retry<20;retry++) {
         await wait(100);checked(m,m.fieldId);popup=ownedPopup(entry,before);
-        if (popup && popup.querySelector(optionSelector)) break;
+        if (popup && popup.querySelector(optionSelector) && (!m.query || retry>=4)) break;
       }
-      if (!popup) throw new Error('无法确认此下拉框的选项区域，请手动选择');
-      for (const node of popup.querySelectorAll(optionSelector)) {
-        if (visible(node) && node.getAttribute('aria-disabled')!=='true' && !node.matches('.is-disabled,.ant-select-item-option-disabled,.semi-select-option-disabled,.arco-select-option-disabled')) optionNodes.push(node);
+      if (!popup && !searchInput) throw new Error('无法确认此下拉框的选项区域，请手动选择');
+      entry.popup=popup;
+      for (const node of popup?.querySelectorAll(optionSelector) || []) {
+        if (visible(node) && text(node) && node.getAttribute('aria-disabled')!=='true' && !node.matches('.is-disabled,.ant-select-item-option-disabled,.semi-select-option-disabled,.arco-select-option-disabled')) optionNodes.push(node);
       }
+      session={id:crypto.randomUUID(),fieldId:m.fieldId,nodes:optionNodes,labels:optionNodes.map(text),searchInput,previousSearchValue};
     }
-    if (!optionNodes.length || optionNodes.length>100) throw new Error('选项为空或超过 100 项，请先手动搜索/选择');
-    session = {id:crypto.randomUUID(),fieldId:m.fieldId,nodes:optionNodes,labels:optionNodes.map(text)};
-    return {ok:true,sessionId:session.id,options:session.labels.map((label,i)=>({id:'o'+i,label}))};
+    if(entry.kind==='select')session={id:crypto.randomUUID(),fieldId:m.fieldId,nodes:optionNodes,labels:optionNodes.map(text)};
+    if(optionNodes.length>100)return {ok:true,sessionId:session.id,searchable:!!session.searchInput,options:[],error:'选项超过 100 项，请先搜索或手动选择'};
+    return {ok:true,sessionId:session.id,searchable:!!session.searchInput,options:session.labels.map((label,i)=>({id:'o'+i,label}))};
+  }
+  function closeOptions(m){
+    if(m.token!==token || m.url!==scanUrl || location.href!==scanUrl)return {ok:true};
+    if(session?.fieldId!==m.fieldId || session.id!==m.sessionId)return {ok:true};
+    const input=session.searchInput;
+    if(input?.isConnected && input.value!==session.previousSearchValue){
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,session.previousSearchValue);
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+    const e=entries.get(m.fieldId)?.e;
+    e?.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    e?.querySelector('[role="combobox"]')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    input?.blur();
+    session=null;return {ok:true};
   }
   function assign(e, value) {
     if (e.isContentEditable) e.textContent=value;
@@ -172,6 +207,7 @@
   async function handle(m) {
     if(m.type==='SCAN')return scan(m);
     if(m.type==='OPEN_OPTIONS')return await openOptions(m);
+    if(m.type==='CLOSE_OPTIONS')return closeOptions(m);
     if(m.type==='FILL')return await fill(m);
     if(m.type==='LOCATE'){focus(checked(m,m.fieldId));return {ok:true};}
     if(m.type==='VERIFY'){
@@ -180,7 +216,7 @@
     }
   }
   const listener=(m,s,reply)=>{
-    if(s.id!==chrome.runtime.id || !['SCAN','OPEN_OPTIONS','FILL','LOCATE','VERIFY'].includes(m?.type))return;
+    if(s.id!==chrome.runtime.id || !['SCAN','OPEN_OPTIONS','CLOSE_OPTIONS','FILL','LOCATE','VERIFY'].includes(m?.type))return;
     if(running){reply({ok:false,error:'页面正在执行其他动作'});return;}
     running=true;handle(m).then(reply).catch(e=>reply({ok:false,error:e.message})).finally(()=>{running=false;});return true;
   };
