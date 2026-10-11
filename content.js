@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.5.7';
+  const VERSION = '0.5.8';
   if (globalThis.__resumeFill?.version === VERSION) return;
   if (globalThis.__resumeFill?.listener) chrome.runtime.onMessage.removeListener(globalThis.__resumeFill.listener);
   let token = '', scanUrl = '', entries = new Map(), session = null, running = false;
@@ -108,7 +108,9 @@
       const kind = e.tagName === 'SELECT' ? 'select' : e.matches(widgetSelector) ? 'custom-select' : ['radio','checkbox','file'].includes(e.type) ? e.type : 'text';
       const entry = {e,kind}; const name = label(e) || '未标注字段'; const reason = manualReason(e,kind,name);
       const container = e.closest('section,fieldset,[data-section]');
-      const f = {id:'f'+fields.length,kind,label:name,inputType:e.type || e.getAttribute('role') || 'text',required:!!e.required || e.getAttribute('aria-required')==='true' || /\*/.test(itemLabel(e)),currentValue:read(entry),group:e.name || '',section:text(container?.querySelector('legend,h2,h3,[data-section-title]')),context:fieldContext(e),element:{tag:e.tagName.toLowerCase(),role:e.getAttribute('role')||'',className:String(e.className||'').slice(0,300),placeholder:e.getAttribute('placeholder')||''},manualReason:reason,protected:!!reason,options:kind==='select'?Array.from(e.options).map((o,i)=>({id:'o'+i,label:text(o),disabled:o.disabled||!!o.closest('optgroup:disabled')})).filter(o=>!o.disabled):undefined};
+      // 下拉框仍会被扫描用于界面提示和后续站点适配，但不会进入默认 AI 计划或自动填充。
+      // 这是有意的安全降级：不同网站的下拉组件事件/虚拟列表差异很大，当前版本不自动猜选项。
+      const f = {id:'f'+fields.length,kind,label:name,inputType:e.type || e.getAttribute('role') || 'text',required:!!e.required || e.getAttribute('aria-required')==='true' || /\*/.test(itemLabel(e)),currentValue:read(entry),group:e.name || '',section:text(container?.querySelector('legend,h2,h3,[data-section-title]')),context:fieldContext(e),element:{tag:e.tagName.toLowerCase(),role:e.getAttribute('role')||'',className:String(e.className||'').slice(0,300),placeholder:e.getAttribute('placeholder')||''},manualReason:reason,ignoredReason:['select','custom-select'].includes(kind)?'下拉框暂不自动填写，请手动选择':'',protected:!!reason,options:kind==='select'?Array.from(e.options).map((o,i)=>({id:'o'+i,label:text(o),disabled:o.disabled||!!o.closest('optgroup:disabled')})).filter(o=>!o.disabled):undefined};
       entry.f=f;entries.set(f.id,entry);fields.push(f);
     }
     return {ok:true,token,url:scanUrl,fields,dropdownCount:fields.filter(field=>!field.protected&&['select','custom-select'].includes(field.kind)).length,warnings:[...(nodes.length>200?['字段超过 200 项，请分段扫描或减少页面中的重复字段']:[]),...(document.querySelector('iframe')?['页面包含 iframe；本次仅扫描顶层页面']:[])]};

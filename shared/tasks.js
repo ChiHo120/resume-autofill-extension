@@ -1,5 +1,10 @@
 // Tab-bound jobs live in the service worker, not in the disposable side panel.
 export const taskKey = tabId => 'resumeTask:'+tabId;
+// 当前产品策略：只让 AI 处理可直接输入的文字字段。下拉框的选项、事件模型和
+// 组件实现高度依赖具体招聘网站，自动猜测容易误选，因此下拉框只做提示并交给用户手动选择。
+// OPEN_OPTIONS/SELECT_OPTION 协议仍保留在底层，供未来贡献者实现站点专用适配器时复用，默认流程不会调用它们。
+const isDropdown = field => ['select','custom-select'].includes(field?.kind);
+const isManuallyFillable = field => !field?.protected && field?.kind === 'text';
 export function createTasks(chrome, callApi) {
   const jobs = new Map();
   const initial = tabId=>({tabId,scan:null,plan:null,analysis:null,results:[],busy:false,invalid:false,status:'扫描后将按网页顺序列出字段。'});
@@ -34,58 +39,30 @@ export function createTasks(chrome, callApi) {
         if(job.cancelled)throw new Error('页面已更新，请重新扫描');
         state.scan={...result,tabId:state.tabId,title:tab.title || tab.url};
         state.plan=null;state.analysis=null;state.results=[];
-        state.status=`发现 ${result.fields.length} 项，${result.fields.filter(f=>!f.protected).length} 项可自动填写；识别到 ${result.dropdownCount||0} 个下拉框。`+(result.warnings||[]).join('；');
+        state.status=`发现 ${result.fields.length} 项，${result.fields.filter(isManuallyFillable).length} 项可自动填写；已跳过 ${result.dropdownCount||0} 个下拉框（请手动选择）。`+(result.warnings||[]).join('；');
       } else if(['PLAN','ANALYZE'].includes(request.action)) {
         await page(job,{type:'VERIFY',fieldIds:[]});
         if(request.action==='ANALYZE'){
-          const result=await callApi({type:'ANALYZE',fields:state.scan.fields});
+          const fields=state.scan.fields.filter(isManuallyFillable);
+          const result=await callApi({type:'ANALYZE',fields});
           await page(job,{type:'VERIFY',fieldIds:[]});
           state.analysis=result.plan;
-          state.status=`缺项分析完成：${result.plan.missing.length} 项建议已同步到设置页的补充列表。`;
+          state.status=`缺项分析完成：${result.plan.missing.length} 项建议已同步到设置页的补充列表；已跳过 ${state.scan.fields.filter(isDropdown).length} 个下拉框。`;
         }else{
-          const dropdowns=state.scan.fields.filter(f=>!f.protected&&['select','custom-select'].includes(f.kind));
-          const otherFields=state.scan.fields.filter(f=>!dropdowns.includes(f));
-          const result=otherFields.some(f=>!f.protected)?await callApi({type:'PLAN',fields:otherFields}):{plan:{actions:[],missing:[],questions:[]}};
+          const dropdowns=state.scan.fields.filter(isDropdown);
+          const fillableFields=state.scan.fields.filter(isManuallyFillable);
+          const result=fillableFields.length?await callApi({type:'PLAN',fields:fillableFields}):{plan:{actions:[],missing:[],questions:[]}};
           const plan=result.plan;
-          for(const [index,field] of dropdowns.entries()){
-            if(job.cancelled || job.stopped)break;
-            state.status=`正在分析下拉框 ${index+1}/${dropdowns.length}：${field.label}`;await saveJob(job);
-            let opened=null;
-            try{
-              opened=await page(job,{type:'OPEN_OPTIONS',fieldId:field.id});
-              let searchQuery='';
-              if(!opened.options.length&&opened.searchable){
-                const {query}=await callApi({type:'SUGGEST_QUERY',field});
-                if(query){
-                  searchQuery=query;
-                  opened=await page(job,{type:'OPEN_OPTIONS',fieldId:field.id,query});
-                }
-              }
-              if(!opened.options.length)throw new Error('未显示可确认选项；若需搜索，请先在网页展开或输入关键字后重试');
-              const {selection}=await callApi({type:'SELECT_OPTION',field,options:opened.options});
-              const option=opened.options.find(o=>o.id===selection.optionId);
-              if(!option)throw new Error('简历资料不足以确定选项，请手动选择或补充信息');
-              plan.actions.push({fieldId:field.id,value:option.id,optionLabel:option.label,searchQuery,reason:selection.reason||'依据简历与页面实际选项'});
-            }catch(error){
-              if(job.cancelled)break;
-              plan.missing.push({fieldId:field.id,reason:'下拉框【'+field.label+'】未确认：'+error.message});
-            }finally{
-              if(opened?.sessionId)await page(job,{type:'CLOSE_OPTIONS',fieldId:field.id,sessionId:opened.sessionId}).catch(()=>{});
-            }
-          }
           await page(job,{type:'VERIFY',fieldIds:[]});
-          if(plan.missing.length)await callApi({type:'SYNC_MISSING',fields:state.scan.fields,missing:plan.missing});
+          if(plan.missing.length)await callApi({type:'SYNC_MISSING',fields:fillableFields,missing:plan.missing});
           state.plan=plan;state.analysis=plan;state.results=[];
-          const checkedDropdowns=plan.actions.filter(action=>dropdowns.some(field=>field.id===action.fieldId)).length;
-          state.status=`计划就绪：${plan.actions.length} 项默认全选；已逐个检查 ${dropdowns.length} 个下拉框，其中 ${checkedDropdowns} 个进入填充，${dropdowns.length-checkedDropdowns} 个未确认；${plan.missing.length} 项待补充。`;
+          state.status=`计划就绪：${plan.actions.length} 项可手填字段默认全选；已跳过 ${dropdowns.length} 个下拉框（请手动选择）；${plan.missing.length} 项待补充。`;
         }
       } else if(request.action==='FILL') {
         const autoPlan=!state.plan;
         if(autoPlan){
-          const dropdowns=state.scan.fields.filter(f=>!f.protected&&['select','custom-select'].includes(f.kind));
-          if(dropdowns.length)throw new Error('页面包含下拉框，请先点击“AI 生成计划”逐个确认下拉选项');
           state.status='正在为文字字段生成填写内容…';await saveJob(job);
-          const result=await callApi({type:'PLAN',fields:state.scan.fields.filter(f=>!f.protected)});
+          const result=await callApi({type:'PLAN',fields:state.scan.fields.filter(isManuallyFillable)});
           state.plan=result.plan;state.analysis=result.plan;state.results=[];
         }
         const chosen=autoPlan?null:new Set(request.chosen || []);
@@ -96,22 +73,14 @@ export function createTasks(chrome, callApi) {
           if(job.cancelled || job.stopped)break;
           const field=state.scan.fields.find(f=>f.id===planned.fieldId);
           state.status=`正在填写 ${index+1}/${actions.length}：${field.label}`;await saveJob(job);
-          let openedOptions=null;
           try {
             let action={...planned,overwrite:request.overwrite===true};
-            if(['select','custom-select'].includes(field.kind)){
-              const options=await page(job,{type:'OPEN_OPTIONS',fieldId:field.id,query:planned.searchQuery||''});openedOptions=options;
-              if(job.stopped || job.cancelled)break;
-              const matches=options.options.filter(o=>o.label===planned.optionLabel);
-              if(matches.length!==1)throw new Error('计划中的下拉选项已变化或存在重名，请重新生成计划或手动选择');
-              const option=matches[0];
-              action={...action,value:option.id,sessionId:options.sessionId};
-            }
+            // 防御性保护：旧缓存或第三方调用即使带入下拉框，也绝不打开或选择选项。
+            if(isDropdown(field))throw new Error('下拉框已跳过自动填充，请在招聘页面手动选择');
             if(job.stopped || job.cancelled)break;
             const result=await page(job,{type:'FILL',actions:[action]});
             state.results.push(result.results[0]);
           }catch(error){state.results.push({fieldId:field.id,ok:false,error:error.message});}
-          finally{if(openedOptions?.sessionId)await page(job,{type:'CLOSE_OPTIONS',fieldId:field.id,sessionId:openedOptions.sessionId}).catch(()=>{});}
           await saveJob(job);
         }
         const completed=state.results.filter(r=>r.ok).map(r=>r.fieldId);

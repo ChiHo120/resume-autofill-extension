@@ -24,10 +24,9 @@ try{
    globalThis.optionCalls=[];
    globalThis.fetch=async(url,options)=>{
      const body=JSON.parse(options.body), data=JSON.parse(body.messages[1].content);let response;
-     if(data.options){globalThis.optionCalls.push(data.options);response={optionId:data.options.find(o=>o.label===(data.field.label.includes('所在地')?'上海':'本科'))?.id||'',reason:'resume fact'};}
-     else {
+     {
        const age=data.resume.supplements?.find(item=>item.label==='年龄')?.value;
-       response={actions:data.fields.filter(f=>!f.protected&&(!f.label.includes('年龄')||age)).map(f=>({fieldId:f.id,value:f.label.includes('年龄')?age:f.label.includes('姓名')?'Demo Name':f.kind==='custom-select'?'上海':f.kind==='select'?'o1':'Built robot',reason:'saved resume'})),missing:data.fields.filter(f=>f.label.includes('年龄')&&!age).map(f=>({fieldId:f.id,reason:'请在简历补充出生日期或年龄'})),questions:[]};
+       response={actions:data.fields.filter(f=>!f.protected&&(!f.label.includes('年龄')||age)).map(f=>({fieldId:f.id,value:f.label.includes('年龄')?age:f.label.includes('姓名')?'Demo Name':'Built robot',reason:'saved resume'})),missing:data.fields.filter(f=>f.label.includes('年龄')&&!age).map(f=>({fieldId:f.id,reason:'请在简历补充出生日期或年龄'})),questions:[]};
      }
      return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(response)}}]})};
    };
@@ -74,25 +73,25 @@ try{
  await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('缺项分析完成'));
  await settings.locator('#supplementFields textarea').waitFor();
  await panel.locator('#plan').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('计划就绪'));
- assert.match(await panel.locator('.field').nth(1).innerText(),/计划填充：上海/);
- assert.match(await panel.locator('.field').nth(2).innerText(),/计划填充：本科/);
- assert.equal((await worker.evaluate(()=>globalThis.optionCalls)).length,2);
+ assert.match(await panel.locator('.field').nth(1).innerText(),/下拉框暂不自动填写，请手动选择/);
+ assert.match(await panel.locator('.field').nth(2).innerText(),/下拉框暂不自动填写，请手动选择/);
+ assert.equal((await worker.evaluate(()=>globalThis.optionCalls)).length,0);
  assert.equal(await target.locator('.ant-select-selection-item').innerText(),'');
  assert.equal(await target.locator('#degree').inputValue(),'');
- assert.equal(await panel.locator('.chosen:checked').count(),4);assert.equal(await panel.locator('#overwrite').isChecked(),true);
+ assert.equal(await panel.locator('.chosen:checked').count(),2);assert.equal(await panel.locator('#overwrite').isChecked(),true);
  await panel.locator('#selectNone').click();assert.equal(await panel.locator('.chosen:checked').count(),0);
- await panel.locator('#selectAll').click();assert.equal(await panel.locator('.chosen:checked').count(),4);
+ await panel.locator('#selectAll').click();assert.equal(await panel.locator('.chosen:checked').count(),2);
  await panel.locator('#fill').click();await panel.waitForFunction(()=>document.querySelector('#scan').disabled);
  await panel.close();await settings.bringToFront();
  panel=await context.newPage();panel.on('pageerror',e=>errors.push(e.message));
  await panel.goto(`chrome-extension://${extensionId}/panel.html?tabId=${tabId}`);
  await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('执行结束'));
  assert.equal(await target.locator('#name').inputValue(),'Demo Name');
- assert.equal(await target.locator('.ant-select-selection-item').innerText(),'上海');
- assert.equal(await target.locator('#degree').inputValue(),'bs');assert.equal(await target.locator('#description').inputValue(),'Built robot');
+ assert.equal(await target.locator('.ant-select-selection-item').innerText(),'');
+ assert.equal(await target.locator('#degree').inputValue(),'');assert.equal(await target.locator('#description').inputValue(),'Built robot');
  assert.equal(await target.locator('#consent').isChecked(),false);assert.equal(await target.locator('#age').inputValue(),'');
- assert.match(await panel.locator('#status').innerText(),/4\/4/);
- const calls=await worker.evaluate(()=>globalThis.optionCalls);assert.equal(calls.length,2);assert.equal(calls[0].length,2);assert.equal(calls[0].some(o=>o.label==='Unrelated navigation'),false);
+ assert.match(await panel.locator('#status').innerText(),/2\/2/);
+ const calls=await worker.evaluate(()=>globalThis.optionCalls);assert.equal(calls.length,0);
  await settings.locator('#supplementFields textarea').fill('22');
  await settings.locator('#submitSupplements').click();
  await settings.waitForFunction(()=>document.querySelector('#infoSummary').value.includes('年龄：22'));
@@ -101,7 +100,7 @@ try{
  assert.equal(await panel.locator('#fill').isDisabled(),true);
  await panel.locator('#scan').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('发现'));
  await panel.locator('#plan').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('计划就绪'));
- assert.equal(await panel.locator('.chosen:checked').count(),5);
+ assert.equal(await panel.locator('.chosen:checked').count(),3);
  await panel.locator('#fill').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('执行结束'));
  assert.equal(await target.locator('#age').inputValue(),'22');
  assert.equal(await target.locator('#consent').isChecked(),false);

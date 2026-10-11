@@ -32,38 +32,29 @@ test('worker restart recovers interrupted jobs without leaving controls locked',
  const f=fixture(async()=>{});f.storage[taskKey(7)]={tabId:7,busy:true,scan:null,status:'running'};
  const state=await f.tasks.read(7);assert.equal(state.busy,false);assert.match(state.status,/中断/);
 });
-test('plan inspects every dropdown, displays actual choices, and filling refuses changed options',async()=>{
+test('plan ignores dropdowns and only fills manually-enterable text fields',async()=>{
  const apiCalls=[];
  const f=fixture(async request=>{
   apiCalls.push(request);
-  if(request.type==='SELECT_OPTION')return {selection:{optionId:request.options[0].id,reason:'resume fact'}};
-  if(request.type==='SUGGEST_QUERY')return {query:'中南大学'};
-  return {ok:true};
+  if(request.type==='PLAN')return {plan:{actions:[{fieldId:'name',value:'Sun',reason:'resume fact'}],missing:[],questions:[]}};
+  return {ok:true,plan:{actions:[],missing:[],questions:[]}};
  });
- const fields=[{id:'school',label:'学校',kind:'custom-select'},{id:'degree',label:'学历',kind:'custom-select'},{id:'broken',label:'无法打开',kind:'custom-select'}];
- let changed=false;const messages=[];
+ const fields=[{id:'name',label:'姓名',kind:'text'},{id:'school',label:'学校',kind:'custom-select'},{id:'degree',label:'学历',kind:'select'}];
+ const messages=[];
  f.chrome.tabs.sendMessage=async(id,m)=>{
   messages.push(m);
   if(m.type==='SCAN')return {ok:true,url:'https://example.test/'+id,token:'token',fields};
-  if(m.type==='OPEN_OPTIONS'){
-   if(m.fieldId==='broken')return {ok:false,error:'无法确认弹层'};
-   const options=m.fieldId==='school'?(m.query?[{id:'o9',label:'中南大学'}]:[]):[{id:'o2',label:changed?'博士':'本科'}];
-   return {ok:true,sessionId:'session',options,searchable:m.fieldId==='school'};
-  }
-  if(m.type==='FILL')return {ok:true,results:[{fieldId:m.actions[0].fieldId,ok:true,value:'中南大学'}]};
+  if(m.type==='FILL')return {ok:true,results:[{fieldId:m.actions[0].fieldId,ok:true,value:'Sun'}]};
   return {ok:true,results:[]};
  };
  await f.tasks.start(1,{action:'SCAN'});await done(f.tasks,1);
  await f.tasks.start(1,{action:'PLAN'});const planned=await done(f.tasks,1);
- assert.deepEqual(planned.plan.actions.map(a=>a.optionLabel),['中南大学','本科']);
- assert.equal(planned.plan.actions[0].searchQuery,'中南大学');
- assert.equal(planned.plan.missing[0].fieldId,'broken');
+ assert.deepEqual(planned.plan.actions.map(a=>a.fieldId),['name']);
+ assert.match(planned.status,/跳过 2 个下拉框/);
  assert.equal(messages.some(m=>m.type==='FILL'),false);
- assert.equal(apiCalls.filter(m=>m.type==='SELECT_OPTION').length,2);
- assert.equal(apiCalls.at(-1).type,'SYNC_MISSING');
- changed=true;await f.tasks.start(1,{action:'FILL',chosen:['school','degree'],overwrite:true});const filled=await done(f.tasks,1);
- assert.equal(filled.results[0].ok,true);assert.equal(filled.results[1].ok,false);
- assert.match(filled.results[1].error,/变化/);
+ assert.equal(apiCalls.some(m=>['SELECT_OPTION','SUGGEST_QUERY'].includes(m.type)),false);
+ await f.tasks.start(1,{action:'FILL',chosen:['name'],overwrite:true});const filled=await done(f.tasks,1);
+ assert.equal(filled.results[0].ok,true);
  assert.equal(messages.filter(m=>m.type==='FILL').length,1);
 });
 
