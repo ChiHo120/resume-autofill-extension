@@ -11,6 +11,11 @@ test('rejects invented options and wrong boolean types',()=>{
  assert.throws(()=>validatePlan({actions:[{fieldId:'consent',value:'true'}]},fields));
 });
 test('accepts valid option IDs',()=>{assert.equal(validatePlan({actions:[{fieldId:'degree',value:'o1'}]},fields).actions.length,1);});
+test('accounts for every unplanned field and preserves custom dropdown facts',()=>{
+ const result=validatePlan({actions:[{fieldId:'city',value:'Shanghai'}],missing:[{fieldId:'invented',reason:'ignore'}]},[{id:'city',kind:'custom-select'},{id:'age',kind:'text'},{id:'terms',kind:'checkbox',protected:true}]);
+ assert.deepEqual(result.missing.map(f=>f.fieldId),['age']);
+ assert.equal(result.actions[0].value,'Shanghai');
+});
 test('rejects protected declarations and oversized values',()=>{
  assert.throws(()=>validatePlan({actions:[{fieldId:'declaration',value:true}]},[{id:'declaration',kind:'checkbox',protected:true}]));
  assert.throws(()=>validatePlan({actions:[{fieldId:'name',value:'x'.repeat(10001)}]},fields));

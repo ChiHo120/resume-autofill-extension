@@ -2,3 +2,4 @@
 /* Settings: model selector and import feedback */
 select{display:block;width:100%;box-sizing:border-box;padding:10px;margin-top:6px;background:white;border:1px solid #aebcb5;border-radius:4px;font:inherit}
 .settings-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.notice{color:#52635a;line-height:1.6;font-size:13px}#modelStatus{overflow-wrap:anywhere}#pdfText{height:180px}#status{white-space:pre-wrap;line-height:1.6}input,textarea,button{font:inherit}input:disabled,select:disabled{opacity:.65}
+.toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.toolbar label{margin:4px}.field>label{font-weight:600}.field>button{font-size:12px;padding:4px 8px}.field .reason{color:#54625b;font-size:12px}.value{white-space:pre-wrap}.field .result{font-size:13px}#questions{color:#854500}#actions:empty{display:none}

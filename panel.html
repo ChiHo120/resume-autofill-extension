@@ -1,1 +1,11 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>简历智能填充</title><link rel="stylesheet" href="panel.css"></head><body><h1>简历智能填充</h1><button id="settings">设置</button><button id="scan">扫描页面</button><button id="plan" disabled>AI 生成计划</button><p id="status" role="status">请先配置 API 与简历。</p><p>生成计划会把字段摘要和简历发送给配置的 API。</p><details><summary>字段摘要</summary><pre id="snapshot"></pre></details><div id="questions"></div><div id="actions"></div><button id="fill" disabled>填充已勾选项</button><script type="module" src="panel.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>简历智能填充</title><link rel="stylesheet" href="panel.css"></head>
+<body><h1>简历智能填充</h1><div class="toolbar"><button id="settings">设置</button><button id="scan">扫描页面</button></div>
+<label>扫描范围<select id="scope"><option value="page">当前页面全部已展示表单（含下方内容）</option><option value="viewport">仅当前屏幕可见区域</option></select></label>
+<div class="toolbar"><button id="analyze" disabled>AI 分析缺项</button><button id="plan" disabled>AI 生成计划</button></div>
+<p id="status" role="status">扫描后将按网页顺序列出字段。</p><p class="notice">AI 分析会发送当前字段和已保存简历。计划默认全选并覆盖已有值；缺失事实、只读项、附件和声明不自动填写。</p>
+<div class="toolbar"><button id="selectAll" disabled>全选可填项</button><button id="selectNone" disabled>取消全选</button><label><input id="overwrite" type="checkbox" checked>覆盖已有值</label></div>
+<div class="toolbar"><button id="fill" disabled>一键填充</button><button id="stop" disabled>停止后续填写</button></div>
+<div id="questions" aria-live="polite"></div><section id="actions" aria-label="与网页对应的字段清单"></section>
+<details><summary>技术字段摘要</summary><pre id="snapshot"></pre></details>
+<script type="module" src="panel.js"></script></body></html>
