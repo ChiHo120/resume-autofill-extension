@@ -5,8 +5,9 @@ let listener;
 let stored={config:{baseUrl:'https://example.com/v1',apiKey:'test',model:'test-model'},profile:null,resumeSource:{name:'resume.pdf',text:'Demo Applicant - Engineer'}};
 const requests=[];
 globalThis.chrome={
-  sidePanel:{setPanelBehavior:async()=>{}},
-  storage:{local:{setAccessLevel:async()=>{},get:async()=>stored,set:async data=>{stored={...stored,...data};}}},
+  sidePanel:{setPanelBehavior:async()=>{},setOptions:async()=>{}},
+  tabs:{query:async()=>[],onUpdated:{addListener:()=>{}},onRemoved:{addListener:()=>{}}},
+  storage:{onChanged:{addListener:()=>{}},local:{setAccessLevel:async()=>{},get:async()=>stored,set:async data=>{stored={...stored,...data};}}},
   permissions:{contains:async()=>true},
   runtime:{id:'test-extension',getURL:path=>`chrome-extension://test-extension/${path}`,onMessage:{addListener:fn=>{listener=fn;}}}
 };

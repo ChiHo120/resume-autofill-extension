@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateSupplements,missingSupplements,mergePending,informationSummary} from '../shared/resume.js';
+import {validateSupplements,missingSupplements,mergePending,informationSummary,parseSupplementLines} from '../shared/resume.js';
 import {validateResume} from '../shared/api.js';
 const age={id:'age',label:'年龄',section:'基本信息',reason:'请补充年龄',value:' 22 '};
+test('multiline supplement entry accepts Chinese and ASCII separators',()=>{
+ assert.deepEqual(parseSupplementLines('年龄：22\n\n城市: 上海'),[{label:'年龄',value:'22'},{label:'城市',value:'上海'}]);
+ assert.throws(()=>parseSupplementLines('年龄22'));
+ assert.throws(()=>parseSupplementLines(''));
+});
 
 test('supplements accept ordinary text and reject malformed or oversized backups',()=>{
  assert.equal(validateSupplements([age])[0].value,'22');

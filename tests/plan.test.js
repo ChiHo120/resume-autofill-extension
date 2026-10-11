@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validatePlan} from '../shared/plan.js';
+import {validatePlan,validateAnalysis} from '../shared/plan.js';
 const fields=[{id:'name',kind:'text'},{id:'degree',kind:'select',options:[{id:'o1'}]},{id:'consent',kind:'checkbox'}];
+test('missing analysis does not require actions or valid dropdown values',()=>{
+ const input={actions:[{fieldId:'degree',value:'invalid-option'}],missing:[{fieldId:'name',reason:'姓名'},{fieldId:'name',reason:'姓名'},{fieldId:'terms'},{fieldId:'unknown'}]};
+ assert.deepEqual(validateAnalysis(input,[...fields,{id:'terms',protected:true}]).missing,[{fieldId:'name',reason:'姓名'}]);
+ assert.deepEqual(validateAnalysis({missing:[]},fields).missing,[]);
+ assert.throws(()=>validateAnalysis({},fields));
+});
 test('rejects unknown and duplicate fields',()=>{
  assert.throws(()=>validatePlan({actions:[{fieldId:'submit',value:'x'}]},fields));
  assert.throws(()=>validatePlan({actions:[{fieldId:'name',value:'x'},{fieldId:'name',value:'y'}]},fields));

@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>简历智能填充</title><link rel="stylesheet" href="panel.css"></head>
 <body><h1>简历智能填充</h1><div class="toolbar"><button id="settings">设置</button><button id="scan">扫描页面</button></div>
+<p id="boundPage" class="notice">正在绑定招聘页面…</p><button id="returnPage">返回绑定页面</button>
 <label>扫描范围<select id="scope"><option value="page">当前页面全部已展示表单（含下方内容）</option><option value="viewport">仅当前屏幕可见区域</option></select></label>
 <div class="toolbar"><button id="analyze" disabled>AI 分析缺项</button><button id="plan" disabled>AI 生成计划</button></div>
 <p id="status" role="status">扫描后将按网页顺序列出字段。</p><p class="notice">AI 分析会发送当前字段和已保存的简历、补充信息。缺项会自动同步到设置页，填写并提交后可重新生成计划。计划默认全选并覆盖已有值；缺失事实、只读项、附件和声明不自动填写。</p>

@@ -16,3 +16,10 @@ export function validatePlan(raw, fields) {
   const missing=fields.filter(f=>!f.protected&&!seen.has(f.id)).map(f=>({fieldId:f.id,reason:reasons.get(f.id)||'模型没有给出可确认值，请补充简历资料或手动填写'}));
   return {actions,missing,questions:Array.isArray(raw.questions)?raw.questions.filter(q=>typeof q==='string').slice(0,30):[]};
 }
+export function validateAnalysis(raw, fields) {
+  if (!raw || !Array.isArray(raw.missing) || raw.missing.length > 200) throw new Error('缺项分析需要返回 missing 数组，请重试');
+  const known = new Map(fields.filter(f=>!f.protected).map(f=>[f.id,f]));
+  const missing = new Map();
+  for (const item of raw.missing) if (known.has(item?.fieldId)) missing.set(item.fieldId,{fieldId:item.fieldId,reason:String(item.reason || '请补充此项真实信息').slice(0,1000)});
+  return {actions:[],missing:[...missing.values()],questions:Array.isArray(raw.questions)?raw.questions.filter(q=>typeof q==='string').slice(0,30):[]};
+}

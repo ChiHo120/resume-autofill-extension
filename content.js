@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.5.0';
+  const VERSION = '0.5.3';
   if (globalThis.__resumeFill?.version === VERSION) return;
   if (globalThis.__resumeFill?.listener) chrome.runtime.onMessage.removeListener(globalThis.__resumeFill.listener);
   let token = '', scanUrl = '', entries = new Map(), session = null, running = false;
@@ -174,7 +174,10 @@
     if(m.type==='OPEN_OPTIONS')return await openOptions(m);
     if(m.type==='FILL')return await fill(m);
     if(m.type==='LOCATE'){focus(checked(m,m.fieldId));return {ok:true};}
-    if(m.type==='VERIFY')return {ok:true,results:m.fieldIds.map(id=>{try{const entry=checked(m,id);return {fieldId:id,ok:read(entry)===entry.expected,value:read(entry),error:'后续操作改变了字段值'};}catch(e){return {fieldId:id,ok:false,error:e.message};}})};
+    if(m.type==='VERIFY'){
+      if(m.token!==token || m.url!==scanUrl || location.href!==scanUrl)throw new Error('原页面或扫描已变化，请重新扫描');
+      return {ok:true,results:m.fieldIds.map(id=>{try{const entry=checked(m,id);return {fieldId:id,ok:read(entry)===entry.expected,value:read(entry),error:'后续操作改变了字段值'};}catch(e){return {fieldId:id,ok:false,error:e.message};}})};
+    }
   }
   const listener=(m,s,reply)=>{
     if(s.id!==chrome.runtime.id || !['SCAN','OPEN_OPTIONS','FILL','LOCATE','VERIFY'].includes(m?.type))return;

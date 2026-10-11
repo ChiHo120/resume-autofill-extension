@@ -1,5 +1,16 @@
 export const RESUME_KEYS = ['config','profile','resumeSource','supplements','pendingFields','infoSummary'];
 
+export function parseSupplementLines(text) {
+  const lines=text.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
+  if(!lines.length)throw new Error('请填写补充内容，例如：年龄：22');
+  if(lines.length>200)throw new Error('一次最多添加 200 项');
+  return lines.map((line,index)=>{
+    const match=line.match(/^([^：:]+)[：:]\s*(.+)$/);
+    if(!match||!match[1].trim()||match[1].trim().length>300||match[2].length>10000)throw new Error(`第 ${index+1} 行请使用“项目名称：内容”格式`);
+    return {label:match[1].trim(),value:match[2].trim()};
+  });
+}
+
 export function validateSupplements(items = []) {
   if (!Array.isArray(items) || items.length > 200 || JSON.stringify(items).length > 200000) throw new Error('补充项过多或内容过长');
   const seen = new Set();

@@ -60,8 +60,8 @@ try{
  assert.match(await page.locator('#infoSummary').inputValue(),/edited PDF text/);
  await page.reload();await page.waitForFunction(()=>document.querySelector('#infoSummary').value.includes('年龄：22'));
  assert.equal(await page.locator('#supplementFields textarea[aria-label="年龄"]').inputValue(),'22');
- await page.locator('#customLabel').fill('到岗时间');await page.locator('#addSupplement').click();
- await page.locator('#supplementFields textarea[aria-label="到岗时间"]').fill('下个月');
+ await page.locator('#bulkSupplements').fill('到岗时间：下个月\n城市：上海');await page.locator('#addBulk').click();
+ assert.equal(await page.locator('#supplementFields textarea[aria-label="到岗时间"]').inputValue(),'下个月');
  await page.locator('#submitSupplements').click();await page.waitForFunction(()=>window.savedData.supplements?.length===3);
  const pdfDownloadPromise=page.waitForEvent('download');await page.locator('#backup').click();
  const pdfBackup=await fs.readFile(await (await pdfDownloadPromise).path());

@@ -34,15 +34,30 @@ try{
  });
  const settings=await context.newPage();await settings.goto(`chrome-extension://${extensionId}/options.html`);
  await settings.locator('#infoSummary').waitFor();
- const panel=await context.newPage();const errors=[];panel.on('pageerror',e=>errors.push(e.message));
+ let panel=await context.newPage();const errors=[];panel.on('pageerror',e=>errors.push(e.message));
  settings.on('pageerror',e=>errors.push(e.message));
  await panel.addInitScript(id=>{const realQuery=chrome.tabs.query.bind(chrome.tabs);chrome.tabs.query=async query=>query.active?[await chrome.tabs.get(id)]:realQuery(query);},tabId);
- await panel.goto(`chrome-extension://${extensionId}/panel.html`);
+ await panel.goto(`chrome-extension://${extensionId}/panel.html?tabId=${tabId}`);
  await panel.locator('#scope').selectOption('viewport');await panel.locator('#scan').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('发现'));
  assert.equal(await panel.locator('.field').count(),6);
  await panel.locator('#scope').selectOption('page');await panel.locator('#scan').click();await panel.waitForFunction(()=>document.querySelectorAll('.field').length===7);
  assert.match(await panel.locator('.field').nth(1).innerText(),/所在地/);
- await panel.locator('#analyze').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('缺项分析完成'));
+ // Analyze without actions; the panel may close and another tab become active meanwhile.
+ await worker.evaluate(()=>{const original=globalThis.fetch;globalThis.fetch=async(url,options)=>{
+   const body=JSON.parse(options.body);
+   if(body.messages[0].content.startsWith('Analyze missing')){
+     await new Promise(resolve=>setTimeout(resolve,1000));
+     const data=JSON.parse(body.messages[1].content);
+     return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({missing:data.fields.filter(f=>f.label.includes('年龄')).map(f=>({fieldId:f.id,reason:'请补充出生日期或年龄'})),questions:[]})}}]})};
+   }
+   return original(url,options);
+ };});
+ await panel.locator('#analyze').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('正在分析'));
+ await panel.close();await settings.bringToFront();
+ await settings.locator('#supplementFields textarea').waitFor();
+ panel=await context.newPage();panel.on('pageerror',e=>errors.push(e.message));
+ await panel.goto(`chrome-extension://${extensionId}/panel.html?tabId=${tabId}`);
+ await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('缺项分析完成'));
  assert.match(await panel.locator('#questions').innerText(),/出生日期/);
  await settings.locator('#supplementFields textarea').waitFor();
  assert.match(await settings.locator('#supplementFields').innerText(),/待补充：年龄/);
@@ -50,7 +65,11 @@ try{
  assert.equal(await panel.locator('.chosen:checked').count(),4);assert.equal(await panel.locator('#overwrite').isChecked(),true);
  await panel.locator('#selectNone').click();assert.equal(await panel.locator('.chosen:checked').count(),0);
  await panel.locator('#selectAll').click();assert.equal(await panel.locator('.chosen:checked').count(),4);
- await panel.locator('#fill').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('执行结束'));
+ await panel.locator('#fill').click();await panel.waitForFunction(()=>document.querySelector('#scan').disabled);
+ await panel.close();await settings.bringToFront();
+ panel=await context.newPage();panel.on('pageerror',e=>errors.push(e.message));
+ await panel.goto(`chrome-extension://${extensionId}/panel.html?tabId=${tabId}`);
+ await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('执行结束'));
  assert.equal(await target.locator('#name').inputValue(),'Demo Name');
  assert.equal(await target.locator('.ant-select-selection-item').innerText(),'上海');
  assert.equal(await target.locator('#degree').inputValue(),'bs');assert.equal(await target.locator('#description').inputValue(),'Built robot');
@@ -71,7 +90,19 @@ try{
  assert.equal(await target.locator('#consent').isChecked(),false);
  await settings.reload();await settings.waitForFunction(()=>document.querySelector('#infoSummary').value.includes('年龄：22'));
  assert.equal(await settings.locator('#supplementFields textarea').inputValue(),'22');
+ // Separate tab keeps its own scan while the first tab's result survives reopening.
+ const other=await context.newPage();await other.route('https://recruitment.example.test/**',route=>route.fulfill({contentType:'text/html',body:'<label>Name<input id="other-name"></label>'}));await other.goto('https://recruitment.example.test/other');
+ const otherId=await worker.evaluate(async()=> (await chrome.tabs.query({url:'https://recruitment.example.test/other'}))[0].id);
+ const otherPanel=await context.newPage();await otherPanel.goto(`chrome-extension://${extensionId}/panel.html?tabId=${otherId}`);
+ assert.equal(await otherPanel.locator('.field').count(),0);
+ await otherPanel.locator('#scan').click();await otherPanel.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('发现'));
+ await panel.reload();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('执行结束'));
+ assert.match(await panel.locator('#boundPage').getAttribute('title'),/\/apply$/);
+ await target.reload();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('重新加载或跳转'));
+ assert.equal(await panel.locator('#fill').isDisabled(),true);
+ assert.equal(await panel.locator('#scan').isEnabled(),true);
+ assert.match(await otherPanel.locator('#status').innerText(),/发现/);
  assert.deepEqual(errors,[]);
  await mkdir('dist',{recursive:true});await panel.screenshot({path:'dist/workflow-preview.png',fullPage:true});
- console.log('PASS: real extension missing-field sync to open settings, supplement submission, summary, stale-plan invalidation, regenerating plan, age filled from supplement, reload persistence; original scan/dropdown/consent checks retained. Mock model and synthetic resume only.');
+ console.log('PASS: tab-bound background analysis and filling survive closing/reopening panel and switching tabs; per-tab isolation; navigation invalidation; missing-field sync, supplements, summary, age fill and consent protection. Mock model and synthetic resume only.');
 }finally{await context.close();}

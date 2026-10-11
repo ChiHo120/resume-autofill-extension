@@ -1,6 +1,6 @@
 import { normalizeBaseUrl, permissionOrigin, validateConfig, validateProfile, validateResume } from './shared/api.js';
 import { extractPdfText } from './shared/pdf.js';
-import { RESUME_KEYS, validateSupplements, informationSummary } from './shared/resume.js';
+import { RESUME_KEYS, validateSupplements, informationSummary, parseSupplementLines } from './shared/resume.js';
 const $ = id => document.getElementById(id);
 let profile = null, supplements = [], pendingFields = [];
 const drafts = new Map();
@@ -9,7 +9,7 @@ let pdfText = ''; let pdfFileName = ''; let pdfData = '';  let busy = false;
 const status = text => $('status').textContent = text;
 function lock(value) {
   busy = value;
-  for (const id of ['baseUrl','apiKey','model','manualModel','loadModels','parsePdf','import','save','backup','restore','clear','submitSupplements','addSupplement','customLabel','pdfText']) $(id).disabled = value;
+  for (const id of ['baseUrl','apiKey','model','manualModel','loadModels','parsePdf','import','save','backup','restore','clear','submitSupplements','addSupplement','customLabel','pdfText','bulkSupplements','addBulk','refreshMissing']) $(id).disabled = value;
   for (const input of supplementInputs.values()) input.disabled = value;
 }
 function captureDrafts() {
@@ -83,6 +83,26 @@ $('addSupplement').onclick=()=>{
   if(existing){supplementInputs.get(existing.id).focus();return;}
   const id='custom:'+crypto.randomUUID();drafts.set(id,{id,label,section:'',reason:'',value:''});
   $('customLabel').value='';renderSupplements();supplementInputs.get(id).focus();
+};
+$('refreshMissing').onclick=async()=>{
+  if(busy)return;
+  try{const data=await chrome.storage.local.get(['pendingFields']);pendingFields=validateSupplements(data.pendingFields);renderSupplements();status('已同步待补充项，正在填写的内容已保留。');}catch(e){status(e.message);}
+};
+$('addBulk').onclick=()=>{
+  if(busy)return;
+  try{
+    const items=parseSupplementLines($('bulkSupplements').value);captureDrafts();
+    const next=new Map([...drafts].map(([id,item])=>[id,{...item}]));
+    for(const item of items){
+      const matches=[...next.values()].filter(existing=>existing.label===item.label);
+      if(matches.length>1)throw new Error('“'+item.label+'”有多个栏目，请在上方对应输入框分别填写');
+      if(matches.length)matches[0].value=item.value;
+      else{const id='custom:'+crypto.randomUUID();next.set(id,{id,...item,section:'',reason:''});}
+    }
+    validateSupplements([...next.values()]);
+    drafts.clear();supplementInputs.clear();for(const [id,item] of next)drafts.set(id,item);
+    renderSupplements();$('bulkSupplements').value='';$('summaryStatus').textContent='多行补充已加入列表，请点击“提交补充并更新汇总”。';
+  }catch(e){status(e.message);}
 };
 $('baseUrl').addEventListener('input',()=>{
   $('apiKey').value = ''; populateModels([]); $('manualModel').value=''; $('modelStatus').textContent='';
@@ -183,7 +203,7 @@ $('clear').onclick=async()=>{
   try {
     await chrome.storage.local.remove(RESUME_KEYS);
 
-    for(const id of ['apiKey','baseUrl','manualModel','pdfText','import'])$(id).value='';
+    for(const id of ['apiKey','baseUrl','manualModel','pdfText','import','bulkSupplements'])$(id).value='';
     populateModels([]);pdfText='';$('parsePdf').hidden=true;$('pdfPreview').hidden=true;
     profile=null;resetSupplements({});refreshSummary();$('customLabel').value='';pdfFileName='';pdfData='';$('modelStatus').textContent='';$('summaryStatus').textContent='尚无保存的信息。';status('已删除本地数据');
   }catch(e){status(e.message);}finally{lock(false);}
