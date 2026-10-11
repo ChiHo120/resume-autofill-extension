@@ -27,11 +27,18 @@ try{
   window.messages=JSON.parse(localStorage.getItem('testMessages')||'[]');window.savedData=JSON.parse(localStorage.getItem('testData')||'{}');window.granted=[];
   const changeListeners=[];
   const persist=()=>localStorage.setItem('testData',JSON.stringify(window.savedData));
-  window.addMissingSuggestion=data=>{window.savedData.pendingFields=data;persist();for(const fn of changeListeners)fn({pendingFields:{newValue:data}},'local');};
+  window.addMissingSuggestion=data=>{data=data.filter(item=>!window.savedData.dismissedFields?.includes(item.id));window.savedData.pendingFields=data;persist();for(const fn of changeListeners)fn({pendingFields:{newValue:data}},'local');};
   window.chrome={storage:{onChanged:{addListener:fn=>changeListeners.push(fn)},local:{get:async()=>window.savedData,set:async data=>{window.savedData={...window.savedData,...data};persist();},remove:async keys=>{for(const key of keys)delete window.savedData[key];persist();}}},permissions:{request:async p=>{window.granted.push(p);return true;},getAll:async()=>({origins:[]})},runtime:{sendMessage:async m=>{
    window.messages.push(m);localStorage.setItem('testMessages',JSON.stringify(window.messages));
    if(m.type==='MODELS')return {ok:true,models:['model-A','exact Model ID']};
    if(m.type==='PARSE_RESUME')return {ok:true,profile:{basic:{fullName:'Demo Applicant',email:'demo@example.com'},skills:['Engineering']}};
+   if(m.type==='DISMISS_SUGGESTIONS'){
+    const ids=new Set(m.ids||[]);const saved=window.savedData;
+    const result={pendingFields:(saved.pendingFields||[]).filter(item=>!ids.has(item.id)),supplements:(saved.supplements||[]).filter(item=>!ids.has(item.id)),dismissedFields:m.reset?[]:[...new Set([...(saved.dismissedFields||[]),...ids])]};
+    const {informationSummary}=await import('/shared/resume.js');result.infoSummary=informationSummary(saved.profile,saved.resumeSource,result.supplements);
+    window.savedData={...saved,...result};persist();for(const fn of changeListeners)fn(Object.fromEntries(Object.entries(result).map(([key,newValue])=>[key,{newValue}])),'local');
+    return {ok:true,...result};
+   }
   }}};
  });
  await page.goto(origin+'/options.html');await page.locator('#infoSummary').waitFor();
@@ -58,7 +65,18 @@ try{
  assert.match(await page.locator('#infoSummary').inputValue(),/年龄：22/);
  assert.match(await page.locator('#infoSummary').inputValue(),/城市：上海/);
  assert.match(await page.locator('#infoSummary').inputValue(),/edited PDF text/);
+ await page.evaluate(()=>addMissingSuggestion([...window.savedData.pendingFields,{id:'noise',label:'无',reason:'错误建议',value:''},{id:'noise2',label:'无 / 内推',reason:'',value:''}]));
+ await page.locator('.supplement-item').filter({has:page.getByRole('textbox',{name:'无',exact:true})}).getByRole('button',{name:'移除此项'}).click();
+ await page.waitForFunction(()=>window.savedData.dismissedFields?.includes('noise'));
+ assert.equal(await page.getByRole('textbox',{name:'无',exact:true}).count(),0);
+ await page.locator('#clearPending').click();await page.waitForFunction(()=>window.savedData.dismissedFields?.length===2);
+ assert.equal((await page.evaluate(()=>window.savedData)).supplements.length,2);
+ assert.equal(await page.getByRole('textbox',{name:'无 / 内推',exact:true}).count(),0);
+ await page.evaluate(()=>addMissingSuggestion([...window.savedData.pendingFields,{id:'noise',label:'无',reason:'再次生成的错误建议',value:''}]));
+ assert.equal(await page.getByRole('textbox',{name:'无',exact:true}).count(),0);
  await page.reload();await page.waitForFunction(()=>document.querySelector('#infoSummary').value.includes('年龄：22'));
+ assert.equal(await page.locator('#restoreDismissed').isVisible(),true);
+ assert.equal(await page.locator('#supplementFields textarea').count(),2);
  assert.equal(await page.locator('#supplementFields textarea[aria-label="年龄"]').inputValue(),'22');
  await page.locator('#bulkSupplements').fill('到岗时间：下个月\n城市：上海');await page.locator('#addBulk').click();
  assert.equal(await page.locator('#supplementFields textarea[aria-label="到岗时间"]').inputValue(),'下个月');
@@ -66,20 +84,21 @@ try{
  const pdfDownloadPromise=page.waitForEvent('download');await page.locator('#backup').click();
  const pdfBackup=await fs.readFile(await (await pdfDownloadPromise).path());
  assert.equal(JSON.parse(pdfBackup).profile,null);
- assert.equal(JSON.parse(pdfBackup).version,2);
+ assert.equal(JSON.parse(pdfBackup).version,3);
+ assert.deepEqual(JSON.parse(pdfBackup).dismissedFields,['noise','noise2']);
  assert.equal(JSON.parse(pdfBackup).supplements.length,3);
  await page.locator('#backupFile').setInputFiles({name:'pdf-backup.json',mimeType:'application/json',buffer:pdfBackup});
  await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('备份已恢复'));
  assert.equal(await page.locator('#supplementFields textarea[aria-label="到岗时间"]').inputValue(),'下个月');
  assert.match(await page.locator('#pdfText').inputValue(),/edited PDF text/);
- assert.equal((await page.evaluate(()=>window.messages)).length,1);
+ assert.equal((await page.evaluate(()=>window.messages.filter(message=>message.type==='PARSE_RESUME'))).length,0);
  console.log('PDF-only save, backup and restore passed');
  await page.locator('#pdfText').fill('Demo Applicant - demo@example.com - Engineer');
  await page.locator('#parsePdf').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('识别完成'));
  await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('已保存'));
  const saved=await page.evaluate(()=>window.savedData);assert.equal(saved.config.baseUrl,'http://example.com/v1');assert.equal(saved.config.model,'exact Model ID');assert.equal(saved.profile.basic.fullName,'Demo Applicant');
  assert.match(saved.infoSummary,/到岗时间：下个月/);
- const messages=await page.evaluate(()=>window.messages);assert.equal(messages[0].type,'MODELS');assert.match(messages[1].text,/demo@example.com/);
+ const messages=await page.evaluate(()=>window.messages);assert.equal(messages[0].type,'MODELS');assert.match(messages.find(message=>message.type==='PARSE_RESUME').text,/demo@example.com/);
  await page.locator('#manualModel').fill('custom-model');await page.locator('#save').click();await page.waitForFunction(()=>window.savedData.config.model==='custom-model');
  const persisted=await page.evaluate(()=>window.savedData);
  assert.match(persisted.resumeSource.data,/^data:application\/pdf;base64,/);
@@ -96,9 +115,13 @@ try{
  await page.locator('#backupFile').setInputFiles({name:'old-backup.json',mimeType:'application/json',buffer:oldBackup});
  await page.waitForFunction(()=>document.querySelector('#infoSummary').value.includes('Legacy Applicant'));
  assert.equal(await page.locator('#supplementFields textarea').count(),0);
- await page.locator('#backupFile').setInputFiles({name:'new-backup.json',mimeType:'application/json',buffer:backup});
+ const {dismissedFields:unused,...oldV2}=JSON.parse(backup);
+ await page.locator('#backupFile').setInputFiles({name:'v2-backup.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...oldV2,version:2}))});
  await page.waitForFunction(()=>document.querySelector('#infoSummary').value.includes('年龄：22'));
+ assert.equal(await page.locator('#restoreDismissed').isVisible(),false);
+ await page.locator('#backupFile').setInputFiles({name:'new-backup.json',mimeType:'application/json',buffer:backup});
+ await page.waitForFunction(()=>!document.querySelector('#restoreDismissed').hidden);
  assert.deepEqual(errors,[]);
  await fs.mkdir('dist',{recursive:true});await page.screenshot({path:'dist/settings-preview.png',fullPage:true});
- console.log('Settings browser checks passed: PDF extraction, live missing fields, preserving drafts, submitting answers, combined summary, persistence, v2 backup and v1 migration. API and Chrome permissions mocked.');
+ console.log('Settings browser checks passed: PDF extraction, live missing fields, removing suggestions, bulk cleanup, preserving answers, persistence, v3 backup and v1/v2 migration. API and Chrome permissions mocked.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

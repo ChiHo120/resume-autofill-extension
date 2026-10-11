@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateSupplements,missingSupplements,mergePending,informationSummary,parseSupplementLines} from '../shared/resume.js';
+import {validateSupplements,validateDismissed,missingSupplements,mergePending,informationSummary,parseSupplementLines} from '../shared/resume.js';
 import {validateResume} from '../shared/api.js';
 const age={id:'age',label:'年龄',section:'基本信息',reason:'请补充年龄',value:' 22 '};
 test('multiline supplement entry accepts Chinese and ASCII separators',()=>{
@@ -35,4 +35,11 @@ test('summary preserves PDF and legacy facts, includes confirmed answers, exclud
  assert.doesNotMatch(summary,/invented salary|薪资/);
  assert.ok(summary.indexOf('年龄')<summary.indexOf('PDF original text'));
  assert.equal(informationSummary(null,null,[]),'');
+});
+
+test('dismissed suggestions stay filtered across rescans',()=>{
+ assert.deepEqual(validateDismissed(['age','age','city']),['age','city']);
+ assert.throws(()=>validateDismissed(['']),/已移除建议列表无效/);
+ const incoming=[{id:'age',label:'年龄',value:'',reason:'补充年龄'},{id:'school',label:'学校',value:'',reason:'补充学校'}];
+ assert.deepEqual(mergePending([{id:'age',label:'年龄',value:'',reason:'旧建议'}],incoming,['age']).map(item=>item.id),['school']);
 });

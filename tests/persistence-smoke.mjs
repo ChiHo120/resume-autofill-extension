@@ -7,7 +7,7 @@ const seed={config:{baseUrl:'http://example.com/v1',apiKey:'synthetic-key',model
 let previousId;
 for(const index of [1,2]){
  const root=path.join(temp,'extension-'+index);await cp('dist/unpacked',root,{recursive:true});
- const context=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:true,args:[`--disable-extensions-except=${root}`,`--load-extension=${root}`]});
+ const context=await chromium.launchPersistentContext(profile,{channel:process.env.PLAYWRIGHT_CHANNEL||'chromium',headless:true,args:[`--disable-extensions-except=${root}`,`--load-extension=${root}`]});
  try{
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');const id=worker.url().split('/')[2];
  if(index===1){previousId=id;await worker.evaluate(data=>chrome.storage.local.set(data),seed);}

@@ -20,6 +20,7 @@ globalThis.fetch=async(url,options)=>{
 };
 await import('../background.js');
 const send=message=>new Promise(resolve=>listener(message,{id:'test-extension',url:chrome.runtime.getURL('panel.html')},resolve));
+const sendOptions=message=>new Promise(resolve=>listener(message,{id:'test-extension',url:chrome.runtime.getURL('options.html')},resolve));
 
 test('PDF-only resume supplies facts to form planning and select options',async()=>{
   const plan=await send({type:'PLAN',fields:[{id:'name',kind:'text'}]});
@@ -50,4 +51,25 @@ test('PDF-only resume supplies facts to form planning and select options',async(
   assert.equal(stored.pendingFields.length,1);
   await send({type:'SELECT_OPTION',field:{id:'job',kind:'select'},options:[{id:'engineer',label:'Engineer'}]});
   assert.equal(JSON.parse(requests.at(-1).messages[1].content).resume.supplements[0].value,'22');
+});
+
+test('removing a suggestion persists across AI rescans and can be reset',async()=>{
+ stored={...stored,resumeSource:{name:'resume.pdf',text:'Demo Applicant'},supplements:[],pendingFields:[],dismissedFields:[]};
+ const fields=[{id:'age',label:'年龄',kind:'text'},{id:'unknown',label:'无',kind:'text'}];
+ assert.equal((await send({type:'PLAN',fields})).ok,true);
+ assert.equal(stored.pendingFields.length,2);
+ const odd=stored.pendingFields.find(item=>item.label==='无');
+ stored.supplements=[{...odd,value:'错误内容'}];
+ const dismissed=await sendOptions({type:'DISMISS_SUGGESTIONS',ids:[odd.id]});
+ assert.equal(dismissed.ok,true);
+ assert.deepEqual(stored.dismissedFields,[odd.id]);
+ assert.deepEqual(stored.pendingFields.map(item=>item.label),['年龄']);
+ assert.deepEqual(stored.supplements,[]);
+ assert.doesNotMatch(stored.infoSummary,/错误内容/);
+ await send({type:'PLAN',fields});
+ assert.deepEqual(stored.pendingFields.map(item=>item.label),['年龄']);
+ assert.equal((await sendOptions({type:'DISMISS_SUGGESTIONS',reset:true})).ok,true);
+ assert.deepEqual(stored.dismissedFields,[]);
+ await send({type:'PLAN',fields});
+ assert.deepEqual(stored.pendingFields.map(item=>item.label),['年龄','无']);
 });

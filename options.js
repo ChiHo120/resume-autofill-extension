@@ -1,15 +1,15 @@
 import { normalizeBaseUrl, permissionOrigin, validateConfig, validateProfile, validateResume } from './shared/api.js';
 import { extractPdfText } from './shared/pdf.js';
-import { RESUME_KEYS, validateSupplements, informationSummary, parseSupplementLines } from './shared/resume.js';
+import { RESUME_KEYS, validateSupplements, validateDismissed, informationSummary, parseSupplementLines } from './shared/resume.js';
 const $ = id => document.getElementById(id);
-let profile = null, supplements = [], pendingFields = [];
+let profile = null, supplements = [], pendingFields = [], dismissedFields = [];
 const drafts = new Map();
 const supplementInputs = new Map();
 let pdfText = ''; let pdfFileName = ''; let pdfData = '';  let busy = false;
 const status = text => $('status').textContent = text;
 function lock(value) {
   busy = value;
-  for (const id of ['baseUrl','apiKey','model','manualModel','loadModels','parsePdf','import','save','backup','restore','clear','submitSupplements','addSupplement','customLabel','pdfText','bulkSupplements','addBulk','refreshMissing']) $(id).disabled = value;
+  for (const id of ['baseUrl','apiKey','model','manualModel','loadModels','parsePdf','import','save','backup','restore','clear','submitSupplements','addSupplement','customLabel','pdfText','bulkSupplements','addBulk','refreshMissing','clearPending','restoreDismissed']) $(id).disabled = value;
   for (const input of supplementInputs.values()) input.disabled = value;
 }
 function captureDrafts() {
@@ -17,7 +17,8 @@ function captureDrafts() {
 }
 function renderSupplements() {
   captureDrafts();
-  for (const item of [...supplements,...pendingFields]) if (!drafts.has(item.id) && drafts.size<200) drafts.set(item.id,{...item});
+  for(const id of dismissedFields)drafts.delete(id);
+  for (const item of [...supplements,...pendingFields]) if (!dismissedFields.includes(item.id) && !drafts.has(item.id) && drafts.size<200) drafts.set(item.id,{...item});
   $('supplementFields').replaceChildren(); supplementInputs.clear();
   for (const item of drafts.values()) {
     const box = document.createElement('div'); box.className='supplement-item';
@@ -28,9 +29,14 @@ function renderSupplements() {
     input.oninput=()=>{item.value=input.value;$('summaryStatus').textContent='补充内容尚未提交，请点击“提交补充并更新汇总”。';};
     label.append(input);box.append(label);
     if(item.reason){const reason=document.createElement('p');reason.className='notice';reason.textContent=item.reason;box.append(reason);}
-    if(item.id.startsWith('custom:')){
+    if(pendingFields.some(field=>field.id===item.id) || item.reason || item.id.startsWith('custom:')){
       const remove=document.createElement('button');remove.type='button';remove.textContent='移除此项';
-      remove.onclick=()=>{if(busy)return;captureDrafts();supplementInputs.delete(item.id);drafts.delete(item.id);supplements=supplements.filter(s=>s.id!==item.id);renderSupplements();$('summaryStatus').textContent='已移除草稿中的补充项，提交后生效。';};box.append(remove);
+      remove.onclick=()=>{
+        if(busy)return;
+        if(pendingFields.some(field=>field.id===item.id) || item.reason){void dismissSuggestions([item.id]);return;}
+        captureDrafts();supplementInputs.delete(item.id);drafts.delete(item.id);supplements=supplements.filter(s=>s.id!==item.id);
+        renderSupplements();$('summaryStatus').textContent='已移除草稿中的自定义补充项，提交后生效。';
+      };box.append(remove);
     }
     $('supplementFields').append(box);supplementInputs.set(item.id,input);
   }
@@ -40,8 +46,23 @@ function formSupplements() {captureDrafts();return validateSupplements([...draft
 function currentSource() {return pdfText?{name:pdfFileName || 'resume.pdf',text:$('pdfText').value,data:pdfData,savedAt:new Date().toISOString()}:null;}
 function refreshSummary() { $('infoSummary').value=informationSummary(profile,currentSource(),supplements); }
 function resetSupplements(data) {
-  supplements=validateSupplements(data.supplements);pendingFields=validateSupplements(data.pendingFields);
+  supplements=validateSupplements(data.supplements);pendingFields=validateSupplements(data.pendingFields);dismissedFields=validateDismissed(data.dismissedFields);
   drafts.clear();supplementInputs.clear();renderSupplements();
+  $('restoreDismissed').hidden=!dismissedFields.length;
+}
+async function dismissSuggestions(ids) {
+  if(busy||!ids.length)return;
+  if(ids.some(id=>supplements.some(item=>item.id===id&&item.value))&&!confirm('此操作也会删除对应的已提交补充信息。确定移除吗？'))return;
+  captureDrafts();lock(true);
+  try{
+    const result=await send({type:'DISMISS_SUGGESTIONS',ids});
+    pendingFields=validateSupplements(result.pendingFields);dismissedFields=validateDismissed(result.dismissedFields);
+    supplements=validateSupplements(result.supplements);
+    for(const id of ids){drafts.delete(id);supplementInputs.delete(id);}
+    renderSupplements();$('restoreDismissed').hidden=!dismissedFields.length;
+    refreshSummary();
+    status(`已移除 ${ids.length} 条建议，后续分析不会再次添加。`);
+  }catch(e){status(e.message);}finally{lock(false);}
 }
 function selectedModel() { return $('manualModel').value.trim() || $('model').value; }
 function configFromForm(requireModel = true) {
@@ -72,8 +93,8 @@ if (saved.resumeSource?.text) {
 }
 refreshSummary();
 chrome.storage.onChanged.addListener((changes,area)=>{
-  if(area==='local' && changes.pendingFields){
-    try{pendingFields=validateSupplements(changes.pendingFields.newValue);renderSupplements();}catch(e){status(e.message);}
+  if(area==='local' && (changes.pendingFields||changes.dismissedFields)){
+    try{if(changes.pendingFields)pendingFields=validateSupplements(changes.pendingFields.newValue);if(changes.dismissedFields)dismissedFields=validateDismissed(changes.dismissedFields.newValue);renderSupplements();$('restoreDismissed').hidden=!dismissedFields.length;}catch(e){status(e.message);}
   }
 });
 $('addSupplement').onclick=()=>{
@@ -87,6 +108,17 @@ $('addSupplement').onclick=()=>{
 $('refreshMissing').onclick=async()=>{
   if(busy)return;
   try{const data=await chrome.storage.local.get(['pendingFields']);pendingFields=validateSupplements(data.pendingFields);renderSupplements();status('已同步待补充项，正在填写的内容已保留。');}catch(e){status(e.message);}
+};
+$('clearPending').onclick=async()=>{
+  if(busy)return;captureDrafts();
+  const candidates=new Map([...pendingFields,...supplements.filter(item=>item.reason)].map(item=>[item.id,item]));
+  const ids=[...candidates.values()].filter(item=>!drafts.get(item.id)?.value.trim()&&!supplements.some(saved=>saved.id===item.id&&saved.value)).map(item=>item.id);
+  if(!ids.length){status('没有未填写的待补充建议。');return;}
+  await dismissSuggestions(ids);
+};
+$('restoreDismissed').onclick=async()=>{
+  if(busy||!dismissedFields.length)return;
+  try{const result=await send({type:'DISMISS_SUGGESTIONS',reset:true});dismissedFields=validateDismissed(result.dismissedFields);$('restoreDismissed').hidden=true;status('已恢复移除记录；新的 AI 分析可以再次生成建议。');}catch(e){status(e.message);}
 };
 $('addBulk').onclick=()=>{
   if(busy)return;
@@ -172,7 +204,7 @@ $('backup').onclick=async()=>{
     const current=await chrome.storage.local.get(RESUME_KEYS);
     if(!current.config) throw new Error('请先保存 API 和简历');
     validateResume(current.profile,current.resumeSource,current.supplements);
-    const blob=new Blob([JSON.stringify({version:2,exportedAt:new Date().toISOString(),...current},null,2)],{type:'application/json'});
+    const blob=new Blob([JSON.stringify({version:3,exportedAt:new Date().toISOString(),...current},null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='resume-autofill-backup.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     status('已导出配置备份。备份包含 API Key，请妥善保管，不要提交到 GitHub。');
   }catch(e){status(e.message);}
@@ -184,16 +216,16 @@ $('backupFile').onchange=async()=>{
     if(file.size>23*1024*1024)throw new Error('备份文件过大');
     const data=JSON.parse((await file.text()).replace(/^\uFEFF/,''));
     const config=validateConfig(data.config);const restoredProfile=data.profile ?? null;
-    if(![1,2].includes(data.version))throw new Error('不支持的备份版本');
-    const restoredSupplements=validateSupplements(data.supplements),restoredPending=validateSupplements(data.pendingFields);
+    if(![1,2,3].includes(data.version))throw new Error('不支持的备份版本');
+    const restoredSupplements=validateSupplements(data.supplements),restoredPending=validateSupplements(data.pendingFields),restoredDismissed=validateDismissed(data.dismissedFields);
     validateResume(restoredProfile,data.resumeSource,restoredSupplements);
     const infoSummary=informationSummary(restoredProfile,data.resumeSource,restoredSupplements);
-    await chrome.storage.local.set({config,profile:restoredProfile,resumeSource:data.resumeSource || null,supplements:restoredSupplements,pendingFields:restoredPending,infoSummary});
-    profile=restoredProfile;resetSupplements({supplements:restoredSupplements,pendingFields:restoredPending});
+    await chrome.storage.local.set({config,profile:restoredProfile,resumeSource:data.resumeSource || null,supplements:restoredSupplements,pendingFields:restoredPending,dismissedFields:restoredDismissed,infoSummary});
+    profile=restoredProfile;resetSupplements({supplements:restoredSupplements,pendingFields:restoredPending,dismissedFields:restoredDismissed});
     $('baseUrl').value=config.baseUrl;$('apiKey').value=config.apiKey;$('manualModel').value=config.model;
     populateModels([]);pdfText='';pdfFileName='';pdfData='';$('pdfText').value='';$('pdfPreview').hidden=true;$('parsePdf').hidden=true;
     if(data.resumeSource?.text){pdfData=data.resumeSource.data||'';$('parsePdf').hidden=false;pdfText=data.resumeSource.text;pdfFileName=data.resumeSource.name||'resume.pdf';$('pdfText').value=pdfText;$('pdfPreview').hidden=false;}
-    refreshSummary();$('summaryStatus').textContent='已恢复保存的信息汇总和补充项。';
+    refreshSummary();$('restoreDismissed').hidden=!dismissedFields.length;$('summaryStatus').textContent='已恢复保存的信息汇总和补充项。';
     status('备份已恢复。请检查 API 地址和简历后继续使用。');
   }catch(e){status('恢复失败：'+e.message);}finally{lock(false);}
 };

@@ -61,6 +61,18 @@ try{
  assert.match(await panel.locator('#questions').innerText(),/出生日期/);
  await settings.locator('#supplementFields textarea').waitFor();
  assert.match(await settings.locator('#supplementFields').innerText(),/待补充：年龄/);
+ await settings.locator('#supplementFields').getByRole('button',{name:'移除此项'}).click();
+ await settings.waitForFunction(()=>!document.querySelector('#supplementFields textarea'));
+ await panel.locator('#analyze').click();
+ await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('正在分析'));
+ await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('缺项分析完成'));
+ assert.equal(await settings.locator('#supplementFields textarea').count(),0);
+ await settings.locator('#restoreDismissed').click();
+ await settings.waitForFunction(()=>document.querySelector('#restoreDismissed').hidden);
+ await panel.locator('#analyze').click();
+ await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('正在分析'));
+ await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('缺项分析完成'));
+ await settings.locator('#supplementFields textarea').waitFor();
  await panel.locator('#plan').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('计划就绪'));
  assert.match(await panel.locator('.field').nth(1).innerText(),/计划填充：上海/);
  assert.match(await panel.locator('.field').nth(2).innerText(),/计划填充：本科/);
@@ -109,5 +121,5 @@ try{
  assert.match(await otherPanel.locator('#status').innerText(),/发现/);
  assert.deepEqual(errors,[]);
  await mkdir('dist',{recursive:true});await panel.screenshot({path:'dist/workflow-preview.png',fullPage:true});
- console.log('PASS: tab-bound background analysis and filling survive closing/reopening panel and switching tabs; per-tab isolation; navigation invalidation; missing-field sync, supplements, summary, age fill and consent protection. Mock model and synthetic resume only.');
+ console.log('PASS: tab-bound analysis and filling survive panel reopening and tab switching; missing suggestion dismissal persists across analysis and can be restored; supplement summary, age fill and consent protection. Mock model and synthetic resume only.');
 }finally{await context.close();}

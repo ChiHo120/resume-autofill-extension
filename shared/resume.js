@@ -1,4 +1,4 @@
-export const RESUME_KEYS = ['config','profile','resumeSource','supplements','pendingFields','infoSummary'];
+export const RESUME_KEYS = ['config','profile','resumeSource','supplements','pendingFields','dismissedFields','infoSummary'];
 
 export function parseSupplementLines(text) {
   const lines=text.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
@@ -40,9 +40,15 @@ export function missingSupplements(fields, missing) {
   });
 }
 
-export function mergePending(existing, incoming) {
-  const items = new Map(validateSupplements(existing).map(item=>[item.id,item]));
-  for (const item of validateSupplements(incoming)) items.set(item.id,item);
+export function validateDismissed(items = []) {
+  if (!Array.isArray(items) || items.length > 500 || items.some(item=>typeof item!=='string'||!item||item.length>2000)) throw new Error('已移除建议列表无效');
+  return [...new Set(items)];
+}
+
+export function mergePending(existing, incoming, dismissed = []) {
+  const blocked=new Set(validateDismissed(dismissed));
+  const items = new Map(validateSupplements(existing).filter(item=>!blocked.has(item.id)).map(item=>[item.id,item]));
+  for (const item of validateSupplements(incoming)) if(!blocked.has(item.id)) items.set(item.id,item);
   // Keep the most recent suggestions if many different forms have been analyzed.
   return [...items.values()].slice(-200);
 }

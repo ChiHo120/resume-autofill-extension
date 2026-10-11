@@ -17,7 +17,7 @@
     <h2 id="supplementTitle">补充个人信息</h2>
     <p class="notice">右侧“AI 分析缺项”的建议会自动出现在这里。直接填写年龄等信息即可，无需 JSON。提交后会与 PDF 资料合并；同项冲突时优先使用你提交的补充值。</p>
     <p id="supplementStatus" role="status"></p>
-    <button type="button" id="refreshMissing">刷新待补充项</button>
+    <div class="settings-actions"><button type="button" id="refreshMissing">刷新待补充项</button><button type="button" id="clearPending">清除未填写建议</button><button type="button" id="restoreDismissed" hidden>恢复已移除建议</button></div>
     <div id="supplementFields"></div>
     <label>批量补充个人信息（每行一项）<textarea id="bulkSupplements" maxlength="100000" placeholder="年龄：22&#10;到岗时间：一个月内&#10;期望城市：上海"></textarea></label>
     <button type="button" id="addBulk">加入补充列表</button>
