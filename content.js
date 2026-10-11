@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.5.6';
+  const VERSION = '0.5.7';
   if (globalThis.__resumeFill?.version === VERSION) return;
   if (globalThis.__resumeFill?.listener) chrome.runtime.onMessage.removeListener(globalThis.__resumeFill.listener);
   let token = '', scanUrl = '', entries = new Map(), session = null, running = false;
@@ -43,6 +43,16 @@
     const generic = /^(请输入|请选择|请选择.*日期|输入|选择)(.*)?$/.test(clean(own));
     return clean((generic?context:own) || context || e.placeholder || e.name).slice(0,250);
   }
+  function fieldContext(e) {
+    const box=e.closest(itemSelector) || e.parentElement;
+    const pieces=[];
+    if(box) pieces.push(text(box));
+    let sibling=box?.previousElementSibling;
+    for(let i=0;sibling&&i<2;i++,sibling=sibling.previousElementSibling)pieces.unshift(text(sibling));
+    sibling=box?.nextElementSibling;
+    for(let i=0;sibling&&i<2;i++,sibling=sibling.nextElementSibling)pieces.push(text(sibling));
+    return clean(pieces.filter(Boolean).join(' | ')).slice(0,1600);
+  }
   const protectedLabel = str => /同意|隐私|条款|协议|声明|承诺|consent|agree|terms|privacy|declaration|authorize|certify/i.test(str);
   function read(entry) {
     const e = entry.e;
@@ -81,10 +91,14 @@
   }
   async function revealPage() {
     const originalX=scrollX, originalY=scrollY;
-    const height=Math.max(document.documentElement.scrollHeight,document.body?.scrollHeight||0);
-    const step=Math.max(300,Math.floor(innerHeight*.85));
-    for(let y=0;y<=height;y+=step){window.scrollTo(0,y);window.dispatchEvent(new Event('scroll'));await wait(25);}
-    window.scrollTo(originalX,originalY);await wait(25);
+    const scrollables=[document.scrollingElement,...Array.from(document.querySelectorAll('*')).filter(e=>e.scrollHeight>e.clientHeight+80&&['auto','scroll'].includes(getComputedStyle(e).overflowY))].filter(Boolean);
+    for(const container of scrollables){
+      const original=container.scrollTop;
+      const height=container.scrollHeight, viewport=container.clientHeight||innerHeight, step=Math.max(240,Math.floor(viewport*.85));
+      for(let y=0;y<=height;y+=step){container.scrollTop=y;container.dispatchEvent(new Event('scroll',{bubbles:true}));await wait(25);}
+      container.scrollTop=original;
+    }
+    window.scrollTo(originalX,originalY);await wait(50);
   }
   async function scan(m) {
     if(m.scope!=='viewport')await revealPage();
@@ -94,10 +108,10 @@
       const kind = e.tagName === 'SELECT' ? 'select' : e.matches(widgetSelector) ? 'custom-select' : ['radio','checkbox','file'].includes(e.type) ? e.type : 'text';
       const entry = {e,kind}; const name = label(e) || '未标注字段'; const reason = manualReason(e,kind,name);
       const container = e.closest('section,fieldset,[data-section]');
-      const f = {id:'f'+fields.length,kind,label:name,inputType:e.type || e.getAttribute('role') || 'text',required:!!e.required || e.getAttribute('aria-required')==='true' || /\*/.test(itemLabel(e)),currentValue:read(entry),group:e.name || '',section:text(container?.querySelector('legend,h2,h3,[data-section-title]')),manualReason:reason,protected:!!reason,options:kind==='select'?Array.from(e.options).map((o,i)=>({id:'o'+i,label:text(o),disabled:o.disabled||!!o.closest('optgroup:disabled')})).filter(o=>!o.disabled):undefined};
+      const f = {id:'f'+fields.length,kind,label:name,inputType:e.type || e.getAttribute('role') || 'text',required:!!e.required || e.getAttribute('aria-required')==='true' || /\*/.test(itemLabel(e)),currentValue:read(entry),group:e.name || '',section:text(container?.querySelector('legend,h2,h3,[data-section-title]')),context:fieldContext(e),element:{tag:e.tagName.toLowerCase(),role:e.getAttribute('role')||'',className:String(e.className||'').slice(0,300),placeholder:e.getAttribute('placeholder')||''},manualReason:reason,protected:!!reason,options:kind==='select'?Array.from(e.options).map((o,i)=>({id:'o'+i,label:text(o),disabled:o.disabled||!!o.closest('optgroup:disabled')})).filter(o=>!o.disabled):undefined};
       entry.f=f;entries.set(f.id,entry);fields.push(f);
     }
-    return {ok:true,token,url:scanUrl,fields,warnings:[...(nodes.length>200?['字段超过 200 项，请分段扫描或减少页面中的重复字段']:[]),...(document.querySelector('iframe')?['页面包含 iframe；本次仅扫描顶层页面']:[])]};
+    return {ok:true,token,url:scanUrl,fields,dropdownCount:fields.filter(field=>!field.protected&&['select','custom-select'].includes(field.kind)).length,warnings:[...(nodes.length>200?['字段超过 200 项，请分段扫描或减少页面中的重复字段']:[]),...(document.querySelector('iframe')?['页面包含 iframe；本次仅扫描顶层页面']:[])]};
   }
   function checked(m, id) {
     if (m.token !== token || location.href !== scanUrl || m.url !== scanUrl) throw new Error('页面或扫描已变化，请重新扫描');
@@ -154,7 +168,7 @@
     }
     if(entry.kind==='select')session={id:crypto.randomUUID(),fieldId:m.fieldId,nodes:optionNodes,labels:optionNodes.map(text)};
     if(optionNodes.length>100)return {ok:true,sessionId:session.id,searchable:!!session.searchInput,options:[],error:'选项超过 100 项，请先搜索或手动选择'};
-    return {ok:true,sessionId:session.id,searchable:!!session.searchInput,options:session.labels.map((label,i)=>({id:'o'+i,label}))};
+    return {ok:true,sessionId:session.id,searchable:!!session.searchInput,field:{label:entry.f.label,section:entry.f.section,context:entry.f.context},options:session.labels.map((label,i)=>({id:'o'+i,label}))};
   }
   function closeOptions(m){
     if(m.token!==token || m.url!==scanUrl || location.href!==scanUrl)return {ok:true};
@@ -193,7 +207,7 @@
           const node=session.nodes[index], chosen=session.labels[index];
           if (!node?.isConnected || text(node)!==chosen || node.disabled || node.getAttribute('aria-disabled')==='true') throw new Error('下拉选项已改变');
           if (kind==='select') { if(node.parentElement!==e && !e.contains(node))throw new Error('选项已移位');expected=node.value;assign(e,expected); }
-          else { if(!visible(node))throw new Error('选项已关闭');node.click();expected=chosen; }
+          else { if(!visible(node))throw new Error('选项已关闭');node.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));node.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));node.click();expected=chosen; }
           session=null;
         } else if(kind==='select') {
           const original=f.options.find(o=>o.id===action.value), node=original&&e.options[Number(action.value.slice(1))];

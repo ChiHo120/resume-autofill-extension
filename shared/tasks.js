@@ -34,7 +34,7 @@ export function createTasks(chrome, callApi) {
         if(job.cancelled)throw new Error('页面已更新，请重新扫描');
         state.scan={...result,tabId:state.tabId,title:tab.title || tab.url};
         state.plan=null;state.analysis=null;state.results=[];
-        state.status=`发现 ${result.fields.length} 项，${result.fields.filter(f=>!f.protected).length} 项可自动填写。`+(result.warnings||[]).join('；');
+        state.status=`发现 ${result.fields.length} 项，${result.fields.filter(f=>!f.protected).length} 项可自动填写；识别到 ${result.dropdownCount||0} 个下拉框。`+(result.warnings||[]).join('；');
       } else if(['PLAN','ANALYZE'].includes(request.action)) {
         await page(job,{type:'VERIFY',fieldIds:[]});
         if(request.action==='ANALYZE'){
@@ -76,7 +76,8 @@ export function createTasks(chrome, callApi) {
           await page(job,{type:'VERIFY',fieldIds:[]});
           if(plan.missing.length)await callApi({type:'SYNC_MISSING',fields:state.scan.fields,missing:plan.missing});
           state.plan=plan;state.analysis=plan;state.results=[];
-          state.status=`计划就绪：${plan.actions.length} 项默认全选；已逐个检查 ${dropdowns.length} 个下拉框，${plan.missing.length} 项待补充。`;
+          const checkedDropdowns=plan.actions.filter(action=>dropdowns.some(field=>field.id===action.fieldId)).length;
+          state.status=`计划就绪：${plan.actions.length} 项默认全选；已逐个检查 ${dropdowns.length} 个下拉框，其中 ${checkedDropdowns} 个进入填充，${dropdowns.length-checkedDropdowns} 个未确认；${plan.missing.length} 项待补充。`;
         }
       } else if(request.action==='FILL') {
         const autoPlan=!state.plan;
@@ -118,7 +119,7 @@ export function createTasks(chrome, callApi) {
           const verified=await page(job,{type:'VERIFY',fieldIds:completed});
           for(const result of verified.results)if(!result.ok){const index=state.results.findIndex(r=>r.fieldId===result.fieldId);state.results[index]=result;}
         }
-        state.status=(job.stopped?'已停止。':'执行结束。')+`已校验 ${state.results.filter(r=>r.ok).length}/${actions.length} 项；未提交申请。`;
+        state.status=(job.stopped?'已停止。':'执行结束。')+`已校验 ${state.results.filter(r=>r.ok).length}/${actions.length} 项；计划中另有 ${state.plan.missing?.length||0} 项未确认；未提交申请。`;
       }
     }catch(error){state.status='操作失败：'+error.message;}
     finally{

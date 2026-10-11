@@ -29,9 +29,11 @@ try{
  const scan=await page.evaluate(()=>send({type:'SCAN'}));
  assert.equal(scan.ok,true,scan.error);
  assert.equal(scan.fields.length,5);
+ assert.equal(scan.dropdownCount,3);
  for(const name of ['学校','学院名称','学历','绩点'])assert.ok(scan.fields.some(f=>f.label.includes(name)),name);
  const school=scan.fields.find(f=>f.label.includes('学校')),degree=scan.fields.find(f=>f.label.includes('学历'));
  assert.equal(school.kind,'custom-select');assert.equal(degree.kind,'custom-select');
+ assert.match(school.context,/学校/);assert.ok(school.element.className.includes('ivu-select'));
  const base={token:scan.token,url:scan.url};
  let opened=await page.evaluate(m=>send(m),{...base,type:'OPEN_OPTIONS',fieldId:school.id});
  assert.equal(opened.searchable,true);assert.equal(opened.options.length,0);

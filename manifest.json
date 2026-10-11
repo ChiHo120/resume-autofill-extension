@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "简历智能填充",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArGdlyUE5dTA65rndCRtxRkJKtx3Jo3Wl0t0hYgNAvKxZAdcFPlYm32zZ17NPHCNdLpWwj69Tanga9MQ+F6UYj3pkyKUIzlyC5DZ6GO3LeMAigCsnNxJhTX/fHxQteY2paiqJcv9gns+QDS1vEC2RCtNaGLTKR7+wNbR9HURufqQ/vumqMR02qGPbFrH9xCjnLN/LggHYExr0vZeKbe/SPu8s1gUoZuKG5lx0sLMTrzKdXg9zatcQFiWeSF+PSz+82i6TeIiCHm8sIWsDAUx0/Rk1VZoUXiqyyeTZPdIIqCanI+rqw/8LH502Eg6iwncxQLLI7+BRLHE8UAjx360fgwIDAQAB",
   "minimum_chrome_version": "116",
   "description": "扫描表单，使用可配置 AI 生成填写计划，经确认后填充。",
