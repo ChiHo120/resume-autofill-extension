@@ -14,7 +14,7 @@ try {
    window.chrome={runtime:{id:'test',onMessage:{addListener(fn){window.listener=fn;}}}};
    window.dispatchExtension=m=>new Promise(resolve=>window.listener(m,{id:'test'},resolve));
  });
- await page.addScriptTag({content:fs.readFileSync('content.js','utf8')});
+ for(const file of ['adapters/registry.js','adapters/generic.js','content.js'])await page.addScriptTag({content:fs.readFileSync(file,'utf8')});
  const scan=await page.evaluate(()=>window.dispatchExtension({type:'SCAN'}));
  assert.equal(scan.ok,true);
  const name=scan.fields.find(f=>f.group==='fullName');

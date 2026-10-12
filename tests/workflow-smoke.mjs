@@ -104,6 +104,16 @@ try{
  await panel.locator('#fill').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('执行结束'));
  assert.equal(await target.locator('#age').inputValue(),'22');
  assert.equal(await target.locator('#consent').isChecked(),false);
+ // Regenerate and fill one field without discarding the other field results.
+ const ageCard=panel.locator('.field').filter({hasText:'年龄'});
+ await ageCard.locator('.plan-one').click();
+ await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('单项计划已生成'));
+ assert.equal(await panel.locator('.result').filter({hasText:'已填写并校验'}).count(),2);
+ await target.locator('#age').fill('');
+ await ageCard.locator('.fill-one').click();
+ await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('执行结束'));
+ assert.equal(await target.locator('#age').inputValue(),'22');
+ assert.equal(await panel.locator('.result').filter({hasText:'已填写并校验'}).count(),3);
  await settings.reload();await settings.waitForFunction(()=>document.querySelector('#infoSummary').value.includes('年龄：22'));
  assert.equal(await settings.locator('#supplementFields textarea').inputValue(),'22');
  // Separate tab keeps its own scan while the first tab's result survives reopening.

@@ -18,7 +18,7 @@ try {
  await recruitment.goto('https://recruitment.example.test/apply');
  const scanned=await worker.evaluate(async()=>{
   const tabs=await chrome.tabs.query({url:'https://recruitment.example.test/*'});
-  await chrome.scripting.executeScript({target:{tabId:tabs[0].id},files:['content.js']});
+  await chrome.scripting.executeScript({target:{tabId:tabs[0].id},files:['adapters/registry.js','adapters/generic.js','content.js']});
   return await chrome.tabs.sendMessage(tabs[0].id,{type:'SCAN'});
  });
  assert.equal(scanned.ok,true);assert.equal(scanned.fields[0].label,'Name');

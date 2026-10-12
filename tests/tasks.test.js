@@ -67,3 +67,37 @@ test('one-click fill auto-generates a plan for pages without dropdowns',async()=
  assert.equal(state.results[0].ok,true);
  assert.equal(f.calls.filter(({m})=>m.type==='FILL').length,1);
 });
+
+test('unrecognized questions never reach AI or supplements; one-field retry preserves other results',async()=>{
+ const apiCalls=[];
+ const f=fixture(async request=>{
+  apiCalls.push(request);
+  if(request.type==='PLAN')return {plan:{actions:request.fields.map(field=>({fieldId:field.id,value:field.id==='name'?'Sun':'22',reason:'resume fact'})),missing:[],questions:[]}};
+  return {plan:{actions:[],missing:[],questions:[]}};
+ });
+ const fields=[{id:'name',label:'姓名',kind:'text',recognition:{status:'recognized'}},{id:'unknown',label:'未识别字段',kind:'text',recognition:{status:'unrecognized'}},{id:'age',label:'年龄',kind:'text',recognition:{status:'recognized'}}];
+ let attempts=0;
+ f.chrome.tabs.sendMessage=async(id,m)=>{
+  f.calls.push({id,m});
+  if(m.type==='SCAN')return {ok:true,url:'https://example.test/'+id,token:'token-'+id,fields};
+  if(m.type==='FILL')return {ok:true,results:[m.actions[0].fieldId==='age'&&++attempts===1?{fieldId:'age',ok:false,error:'页面未保存'}:{fieldId:m.actions[0].fieldId,ok:true,value:m.actions[0].value}]};
+  if(m.type==='VERIFY')return {ok:true,results:m.fieldIds.map(fieldId=>({fieldId,ok:true}))};
+  return {ok:true,results:[]};
+ };
+ await f.tasks.start(1,{action:'SCAN'});const scanned=await done(f.tasks,1);
+ assert.match(scanned.status,/1 项字段未识别/);
+ await f.tasks.start(1,{action:'ANALYZE'});await done(f.tasks,1);
+ assert.deepEqual(apiCalls[0].fields.map(field=>field.id),['name','age']);
+ await f.tasks.start(1,{action:'PLAN'});await done(f.tasks,1);
+ await f.tasks.start(1,{action:'FILL',chosen:['name','age'],overwrite:true});const first=await done(f.tasks,1);
+ assert.equal(first.results.find(r=>r.fieldId==='name').ok,true);
+ assert.equal(first.results.find(r=>r.fieldId==='age').ok,false);
+ await assert.rejects(()=>f.tasks.start(1,{action:'PLAN_ONE',fieldId:'unknown'}),/未识别/);
+ await f.tasks.start(1,{action:'PLAN_ONE',fieldId:'age'});const replanned=await done(f.tasks,1);
+ assert.equal(replanned.plan.actions.length,2);
+ assert.equal(replanned.results.find(r=>r.fieldId==='name').ok,true);
+ await f.tasks.start(1,{action:'FILL_ONE',fieldId:'age',overwrite:true});const retried=await done(f.tasks,1);
+ assert.equal(retried.results.find(r=>r.fieldId==='age').ok,true);
+ assert.equal(retried.results.find(r=>r.fieldId==='name').ok,true);
+ assert.equal(f.calls.filter(({m})=>m.type==='FILL'&&m.actions[0].fieldId==='name').length,1);
+});

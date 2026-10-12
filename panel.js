@@ -1,4 +1,5 @@
 import {taskKey} from './shared/tasks.js';
+import {isFillable} from './shared/fields.js';
 const $=id=>document.getElementById(id);
 let tabId=null,state=null,lastPlan=null;
 const selected=new Map();
@@ -14,10 +15,10 @@ function render(next) {
   status(state.status);
   const busy=state.busy,scan=state.scan;
   for(const id of ['scan','scope'])$(id).disabled=busy;
-  for(const id of ['plan','analyze'])$(id).disabled=busy||state.invalid||!scan?.fields.some(f=>!f.protected&&f.kind==='text');
-  $('fill').disabled=busy||state.invalid||!scan?.fields.some(f=>!f.protected&&f.kind==='text')||!!(state.plan&&!state.plan.actions.length);
+  for(const id of ['plan','analyze'])$(id).disabled=busy||state.invalid||!scan?.fields.some(isFillable);
+  $('fill').disabled=busy||state.invalid||!scan?.fields.some(isFillable)||!!(state.plan&&!state.plan.actions.length);
   for(const id of ['selectAll','selectNone'])$(id).disabled=busy||state.invalid||!state.plan?.actions.length;
-  $('overwrite').disabled=busy;$('stop').disabled=!busy||state.operation!=='FILL';
+  $('overwrite').disabled=busy;$('stop').disabled=!busy||!['FILL','FILL_ONE'].includes(state.operation);
   $('questions').replaceChildren();
   for(const item of state.analysis?.missing||[]){const field=scan.fields.find(f=>f.id===item.fieldId);if(!field)continue;const p=document.createElement('p');p.textContent='建议补充【'+field.label+'】：'+item.reason;$('questions').append(p);}
   for(const text of state.analysis?.questions||[]){const p=document.createElement('p');p.textContent=text;$('questions').append(p);}
@@ -32,14 +33,19 @@ function render(next) {
     const current=document.createElement('p');current.className='reason';current.textContent='当前：'+display(field,result?.ok?result.value:field.currentValue);
     const suggestion=document.createElement('p');suggestion.className='value';
     suggestion.textContent=action?'计划填充：'+(action.optionLabel || (field.kind==='select'?field.options?.find(o=>o.id===action.value)?.label:undefined) || display(field,action.value))+'\n依据：'+action.reason:field.ignoredReason||field.manualReason||state.analysis?.missing.find(m=>m.fieldId===field.id)?.reason||'待 AI 分析';
-    const feedback=document.createElement('p');feedback.className='result';feedback.textContent=result?(result.ok?'已填写并校验':result.error):'';
-    box.append(heading,locate,current,suggestion,feedback);$('actions').append(box);
+    if(!action&&!field.ignoredReason&&!field.manualReason&&state.analysis?.missing.some(m=>m.fieldId===field.id))suggestion.textContent='资料缺失：'+suggestion.textContent;
+    const feedback=document.createElement('p');feedback.className='result';feedback.textContent=result?(result.ok?'已填写并校验':'填写失败：'+result.error):'';
+    const generate=document.createElement('button');generate.textContent=action?'重新生成此项':'生成此项计划';generate.className='plan-one';
+    generate.disabled=busy||state.invalid||!isFillable(field);generate.onclick=()=>start('PLAN_ONE',field.id);
+    const fillOne=document.createElement('button');fillOne.textContent=result&&!result.ok?'重试此项':'填写此项';fillOne.className='fill-one';
+    fillOne.disabled=busy||state.invalid||!isFillable(field)||!action;fillOne.onclick=()=>start('FILL_ONE',field.id);
+    box.append(heading,locate,current,suggestion,feedback,generate,fillOne);$('actions').append(box);
   }
   $('snapshot').textContent=scan?JSON.stringify(scan.fields,null,2):'';
 }
-async function start(action){
+async function start(action,fieldId){
   if(tabId===null)return;
-  try{await send({type:'TAB_TASK',action,scope:$('scope').value,chosen:[...selected].filter(([,value])=>value).map(([id])=>id),overwrite:$('overwrite').checked});}
+  try{await send({type:'TAB_TASK',action,fieldId,scope:$('scope').value,chosen:[...selected].filter(([,value])=>value).map(([id])=>id),overwrite:$('overwrite').checked});}
   catch(e){status(e.message);}
 }
 $('settings').onclick=()=>chrome.runtime.openOptionsPage();

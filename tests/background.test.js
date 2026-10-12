@@ -53,6 +53,12 @@ test('PDF-only resume supplies facts to form planning and select options',async(
   assert.equal(JSON.parse(requests.at(-1).messages[1].content).resume.supplements[0].value,'22');
 });
 
+test('unrecognized webpage fields cannot become resume suggestions',async()=>{
+ stored={...stored,pendingFields:[],dismissedFields:[]};
+ const result=await send({type:'PLAN',fields:[{id:'unknown',kind:'text',label:'未识别字段',recognition:{status:'unrecognized'}}]});
+ assert.equal(result.ok,true);assert.deepEqual(stored.pendingFields,[]);
+});
+
 test('removing a suggestion persists across AI rescans and can be reset',async()=>{
  stored={...stored,resumeSource:{name:'resume.pdf',text:'Demo Applicant'},supplements:[],pendingFields:[],dismissedFields:[]};
  const fields=[{id:'age',label:'年龄',kind:'text'},{id:'unknown',label:'无',kind:'text'}];

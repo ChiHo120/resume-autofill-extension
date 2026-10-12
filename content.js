@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.5.8';
+  const VERSION = '0.5.9';
   if (globalThis.__resumeFill?.version === VERSION) return;
   if (globalThis.__resumeFill?.listener) chrome.runtime.onMessage.removeListener(globalThis.__resumeFill.listener);
   let token = '', scanUrl = '', entries = new Map(), session = null, running = false;
@@ -11,6 +11,7 @@
   const optionSelector = '[role="option"],.ant-select-item-option,.semi-select-option,.el-select-dropdown__item,.arco-select-option,.ivu-select-item,.select2-results__option,.vs__dropdown-option,.n-base-select-option,[class*="option"],[class*="Option"]';
   const itemSelector = '.ant-form-item,.semi-form-field,.el-form-item,.arco-form-item,.ivu-form-item,.form-item,[data-field],fieldset';
   const labelSelector = '.ant-form-item-label,.semi-form-field-label,.el-form-item__label,.arco-form-item-label,.ivu-form-item-label,.form-item-label,[data-field-label],legend';
+  const adapter = globalThis.__resumeAdapters.resolve(location.href);
   function visible(e) {
     return !!e?.isConnected && !e.closest('[hidden],[aria-hidden="true"],[inert]') && e.getClientRects().length > 0 && !['hidden','collapse'].includes(getComputedStyle(e).visibility);
   }
@@ -36,12 +37,7 @@
     return '';
   }
   function label(e) {
-    const refs = clean(e.getAttribute('aria-labelledby')).split(' ').map(id => text(document.getElementById(id))).join(' ').trim();
-    const own = Array.from(e.labels || []).map(text).join(' ') || e.getAttribute('aria-label') || refs;
-    const context = itemLabel(e);
-    if (['radio','checkbox'].includes(e.type) && context && own && context !== own) return context+' / '+own;
-    const generic = /^(请输入|请选择|请选择.*日期|输入|选择)(.*)?$/.test(clean(own));
-    return clean((generic?context:own) || context || e.placeholder || e.name).slice(0,250);
+    return adapter.identify(e).label;
   }
   function fieldContext(e) {
     const box=e.closest(itemSelector) || e.parentElement;
@@ -74,7 +70,7 @@
     return '';
   }
   function collect(scope) {
-    const candidates = Array.from(document.querySelectorAll('input,textarea,select,[contenteditable="true"],'+widgetSelector));
+    const candidates = adapter.all('input,textarea,select,[contenteditable="true"],'+widgetSelector);
     const nodes = new Set();
     for (const candidate of candidates) {
       if (candidate.closest(popupSelector)) continue;
@@ -87,7 +83,7 @@
       if (scope === 'viewport') { const r = e.getBoundingClientRect(); if (r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth) continue; }
       nodes.add(e);
     }
-    return [...nodes].sort((a,b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+    return [...nodes];
   }
   async function revealPage() {
     const originalX=scrollX, originalY=scrollY;
@@ -111,6 +107,9 @@
       // 下拉框仍会被扫描用于界面提示和后续站点适配，但不会进入默认 AI 计划或自动填充。
       // 这是有意的安全降级：不同网站的下拉组件事件/虚拟列表差异很大，当前版本不自动猜选项。
       const f = {id:'f'+fields.length,kind,label:name,inputType:e.type || e.getAttribute('role') || 'text',required:!!e.required || e.getAttribute('aria-required')==='true' || /\*/.test(itemLabel(e)),currentValue:read(entry),group:e.name || '',section:text(container?.querySelector('legend,h2,h3,[data-section-title]')),context:fieldContext(e),element:{tag:e.tagName.toLowerCase(),role:e.getAttribute('role')||'',className:String(e.className||'').slice(0,300),placeholder:e.getAttribute('placeholder')||''},manualReason:reason,ignoredReason:['select','custom-select'].includes(kind)?'下拉框暂不自动填写，请手动选择':'',protected:!!reason,options:kind==='select'?Array.from(e.options).map((o,i)=>({id:'o'+i,label:text(o),disabled:o.disabled||!!o.closest('optgroup:disabled')})).filter(o=>!o.disabled):undefined};
+      f.recognition=adapter.identify(e);f.adapter=adapter.id;
+      if(kind==='text'&&f.recognition.status==='unrecognized')f.ignoredReason='字段未识别：无法确定网页在问什么，请定位后手动填写；不会添加到补充资料。';
+      if(['radio','checkbox'].includes(kind)&&!f.manualReason)f.ignoredReason='请在网页手动选择';
       entry.f=f;entries.set(f.id,entry);fields.push(f);
     }
     return {ok:true,token,url:scanUrl,fields,dropdownCount:fields.filter(field=>!field.protected&&['select','custom-select'].includes(field.kind)).length,warnings:[...(nodes.length>200?['字段超过 200 项，请分段扫描或减少页面中的重复字段']:[]),...(document.querySelector('iframe')?['页面包含 iframe；本次仅扫描顶层页面']:[])]};
@@ -122,6 +121,7 @@
     return entry;
   }
   function editable(entry) {
+    if(entry.f.recognition?.status==='unrecognized')throw new Error('字段未识别，请手动填写');
     const reason = manualReason(entry.e,entry.kind,label(entry.e));
     if (reason) throw new Error(reason);
   }

@@ -8,7 +8,8 @@ chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}).catch(cons
 const supplementPrompt = ' The resume includes PDF text, optional legacy profile and user-confirmed supplements. For the same fact, explicit nonempty supplements take priority over PDF or legacy profile. Match their labels and sections to the requested field. Empty answers and missing-field reasons are not resume facts.';
 let pendingWrite = Promise.resolve();
 function storeMissing(fields, missing) {
-  const incoming = missingSupplements(fields,missing);
+  // 未识别是网页语义问题，不能伪装成用户缺少个人资料。
+  const incoming = missingSupplements(fields.filter(field=>field.recognition?.status!=='unrecognized'),missing);
   if (!incoming.length) return Promise.resolve();
   const write = pendingWrite.catch(()=>{}).then(async()=>{
     const {pendingFields=[],dismissedFields=[]} = await chrome.storage.local.get(['pendingFields','dismissedFields']);

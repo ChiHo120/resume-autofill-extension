@@ -25,7 +25,7 @@ try{
   const degree=document.querySelector('#degree');degree.onclick=()=>{if(document.querySelector('#degrees'))return;const popup=document.createElement('div');popup.id='degrees';popup.className='ivu-select-dropdown';for(const label of ['本科','硕士']){const o=document.createElement('div');o.className='ivu-select-item';o.textContent=label;o.onclick=()=>{degree.querySelector('span').textContent=label;popup.remove();};popup.append(o);}document.body.append(popup);};
   degree.onkeydown=e=>{if(e.key==='Escape')document.querySelector('#degrees')?.remove();};
  });
- await page.addScriptTag({content:await readFile('content.js','utf8')});
+ for(const file of ['adapters/registry.js','adapters/generic.js','content.js'])await page.addScriptTag({content:await readFile(file,'utf8')});
  const scan=await page.evaluate(()=>send({type:'SCAN'}));
  assert.equal(scan.ok,true,scan.error);
  assert.equal(scan.fields.length,5);
