@@ -92,6 +92,17 @@ try{
  assert.equal(await target.locator('#consent').isChecked(),false);assert.equal(await target.locator('#age').inputValue(),'');
  assert.match(await panel.locator('#status').innerText(),/2\/2/);
  const calls=await worker.evaluate(()=>globalThis.optionCalls);assert.equal(calls.length,0);
+ await target.locator('#name').fill('Manual Name');
+ await panel.locator('#undo').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('撤销完成'));
+ assert.equal(await target.locator('#name').inputValue(),'Manual Name');
+ assert.equal(await target.locator('#description').inputValue(),'');
+ await panel.locator('.suggestion-editor').first().fill('Edited Name');
+ await panel.locator('#fill').click();await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('执行结束'));
+ assert.equal(await target.locator('#name').inputValue(),'Edited Name');
+ await panel.locator('#fill').click();await panel.locator('#stop').click();
+ await panel.waitForFunction(()=>document.querySelector('#status').textContent.includes('已停止。'));
+ assert.doesNotMatch(await panel.locator('#status').innerText(),/2\/2/);
+
  await settings.locator('#supplementFields textarea').fill('22');
  await settings.locator('#submitSupplements').click();
  await settings.waitForFunction(()=>document.querySelector('#infoSummary').value.includes('年龄：22'));

@@ -7,7 +7,7 @@ export const taskKey = tabId => 'resumeTask:'+tabId;
 const isDropdown = field => ['select','custom-select'].includes(field?.kind);
 export function createTasks(chrome, callApi) {
   const jobs = new Map();
-  const initial = tabId=>({tabId,scan:null,plan:null,analysis:null,results:[],busy:false,invalid:false,status:'扫描后将按网页顺序列出字段。'});
+  const initial = tabId=>({tabId,scan:null,plan:null,analysis:null,results:[],undoAvailable:false,busy:false,invalid:false,status:'扫描后将按网页顺序列出字段。'});
   const write = state=>jobs.get(state.tabId)?.closed?Promise.resolve():chrome.storage.session.set({[taskKey(state.tabId)]:state});
   const saveJob=job=>jobs.get(job.state.tabId)===job&&!job.closed?write(job.state):Promise.resolve();
   async function read(tabId) {
@@ -59,6 +59,10 @@ export function createTasks(chrome, callApi) {
           state.plan=plan;state.analysis=plan;state.results=[];
           state.status=`计划就绪：${plan.actions.length} 项可手填字段默认全选；已跳过 ${dropdowns.length} 个下拉框（请手动选择）；${plan.missing.length} 项待补充。`;
         }
+      } else if(request.action==='UNDO') {
+        const result=await page(job,{type:'UNDO'});state.results=result.results.map(r=>({...r,undone:r.ok}));state.undoAvailable=false;
+        for(const r of result.results)if(r.ok)state.scan.fields.find(f=>f.id===r.fieldId).currentValue=r.value;
+        state.status='撤销完成：'+result.results.filter(r=>r.ok).length+'/'+result.results.length+' 项；后续修改的值会保留。';
       } else if(request.action==='PLAN_ONE') {
         const field=state.scan.fields.find(f=>f.id===request.fieldId);
         if(!isManuallyFillable(field))throw new Error('该字段未识别或不支持自动填写');
@@ -85,6 +89,7 @@ export function createTasks(chrome, callApi) {
         const chosen=single?new Set([request.fieldId]):autoPlan?null:new Set(request.chosen || []);
         const actions=chosen?state.plan.actions.filter(a=>chosen.has(a.fieldId)):state.plan.actions;
         if(!actions.length)throw new Error('请选择可填项');
+        await page(job,{type:'BEGIN_RUN'});state.undoAvailable=false;
         state.results=single?state.results.filter(r=>r.fieldId!==request.fieldId):[];
         for(const [index,planned] of actions.entries()) {
           if(job.cancelled || job.stopped)break;
@@ -96,7 +101,7 @@ export function createTasks(chrome, callApi) {
             if(!isManuallyFillable(field))throw new Error('该字段未识别或不支持自动填写');
             if(job.stopped || job.cancelled)break;
             const result=await page(job,{type:'FILL',actions:[action]});
-            state.results.push(result.results[0]);
+            state.results.push(result.results[0]);state.undoAvailable ||= !!result.results[0].undoable;
           }catch(error){state.results.push({fieldId:planned.fieldId,ok:false,error:error.message});}
           await saveJob(job);
         }
@@ -105,6 +110,7 @@ export function createTasks(chrome, callApi) {
           const verified=await page(job,{type:'VERIFY',fieldIds:completed});
           for(const result of verified.results)if(!result.ok){const index=state.results.findIndex(r=>r.fieldId===result.fieldId);state.results[index]=result;}
         }
+        for(const action of actions)if(!state.results.some(r=>r.fieldId===action.fieldId))state.results.push({fieldId:action.fieldId,ok:false,skipped:true,error:'本轮未执行'});
         state.status=(job.stopped?'已停止。':'执行结束。')+`已校验 ${state.results.filter(r=>r.ok&&actions.some(a=>a.fieldId===r.fieldId)).length}/${actions.length} 项；计划中另有 ${state.plan.missing?.length||0} 项资料缺失；未提交申请。`;
       }
     }catch(error){state.status='操作失败：'+error.message;}
@@ -117,7 +123,7 @@ export function createTasks(chrome, callApi) {
   }
   async function start(tabId,request) {
     if(jobs.has(tabId))throw new Error('原页面任务仍在运行，请稍候');
-    if(!['SCAN','PLAN','ANALYZE','FILL','PLAN_ONE','FILL_ONE'].includes(request.action))throw new Error('未知操作');
+    if(!['SCAN','PLAN','ANALYZE','FILL','PLAN_ONE','FILL_ONE','UNDO'].includes(request.action))throw new Error('未知操作');
     // Reserve the slot before storage awaits so double clicks cannot start two jobs.
     const job={state:initial(tabId),cancelled:false,stopped:false};jobs.set(tabId,job);
     try{
@@ -127,6 +133,14 @@ export function createTasks(chrome, callApi) {
       if(request.action!=='SCAN' && (!state.scan || state.invalid))throw new Error('请先扫描原招聘页面');
       if(['PLAN_ONE','FILL_ONE'].includes(request.action)&&!isManuallyFillable(state.scan.fields.find(f=>f.id===request.fieldId)))throw new Error('该字段未识别或不支持自动填写');
       if(request.action==='SCAN'){state.invalid=false;state.scan=null;state.plan=null;state.analysis=null;state.results=[];}
+      if(request.edits){
+        if(!Array.isArray(request.edits)||request.edits.length>200)throw new Error('无效的编辑内容');
+        for(const edit of request.edits){const action=state.plan?.actions.find(a=>a.fieldId===edit.fieldId);const field=state.scan.fields.find(f=>f.id===edit.fieldId);
+          if(!action||!isManuallyFillable(field)||typeof edit.value!=='string'||edit.value.length>10000)throw new Error('无效的编辑内容');
+        }
+        for(const edit of request.edits){const action=state.plan.actions.find(a=>a.fieldId===edit.fieldId);action.value=edit.value;action.reason='用户确认的编辑值';}
+      }
+      if(request.action==='SCAN')state.undoAvailable=false;
       if(request.action==='PLAN')state.plan=null;
       state.busy=true;state.operation=request.action;
       state.status={SCAN:'正在扫描原页面…',PLAN:'正在生成填写计划…',ANALYZE:'正在分析简历缺项…',FILL:'正在原页面填写…',PLAN_ONE:'正在生成此项计划…',FILL_ONE:'正在填写此项…'}[request.action];

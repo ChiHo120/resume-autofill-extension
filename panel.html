@@ -4,9 +4,9 @@
 <p id="boundPage" class="notice">正在绑定招聘页面…</p><button id="returnPage">返回绑定页面</button>
 <label>扫描范围<select id="scope"><option value="page">当前页面全部已展示表单（含下方内容）</option><option value="viewport">仅当前屏幕可见区域</option></select></label>
 <div class="toolbar"><button id="analyze" disabled>AI 分析缺项</button><button id="plan" disabled>AI 生成计划</button></div>
-<p id="status" role="status">扫描后将按网页顺序列出字段。</p><p class="notice">AI 只分析已识别的文字字段和已保存资料。“未识别字段”请定位检查，不会新增个人资料补充项；“资料缺失”会同步到设置页。各项可独立生成计划、填写或重试。计划默认全选并覆盖已有值；下拉框、只读项、附件和声明请手动处理。</p>
+<p id="status" role="status">扫描后将按网页顺序列出字段。</p><p class="notice">AI 只分析已识别的文字字段和已保存资料。“未识别字段”请定位检查，不会新增个人资料补充项；“资料缺失”会同步到设置页。各项可独立生成计划、填写或重试。建议值可直接编辑，变更会显示原值与目标值。撤销仅恢复最近一轮文字控件，保留后续修改；计划默认全选并覆盖已有值；下拉框、只读项、附件和声明请手动处理。</p>
 <div class="toolbar"><button id="selectAll" disabled>全选可填项</button><button id="selectNone" disabled>取消全选</button><label><input id="overwrite" type="checkbox" checked>覆盖已有值</label></div>
-<div class="toolbar"><button id="fill" disabled>一键填充</button><button id="stop" disabled>停止后续填写</button></div>
+<div class="toolbar"><button id="fill" disabled>一键填充</button><button id="undo" disabled>撤销本轮文字填写</button><button id="stop" disabled>停止后续填写</button></div>
 <div id="questions" aria-live="polite"></div><section id="actions" aria-label="与网页对应的字段清单"></section>
 <details><summary>技术字段摘要</summary><pre id="snapshot"></pre></details>
 <script type="module" src="panel.js"></script></body></html>

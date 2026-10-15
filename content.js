@@ -1,7 +1,8 @@
 (() => {
-  const VERSION = '0.5.9';
+  const VERSION = '0.6.0';
   if (globalThis.__resumeFill?.version === VERSION) return;
   if (globalThis.__resumeFill?.listener) chrome.runtime.onMessage.removeListener(globalThis.__resumeFill.listener);
+  let history=[];
   let token = '', scanUrl = '', entries = new Map(), session = null, running = false;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
@@ -98,7 +99,7 @@
   }
   async function scan(m) {
     if(m.scope!=='viewport')await revealPage();
-    token = crypto.randomUUID(); scanUrl = location.href; entries = new Map(); session = null;
+    token = crypto.randomUUID(); scanUrl = location.href; entries = new Map(); session = null; history=[];
     const nodes = collect(m.scope); const fields = [];
     for (const e of nodes.slice(0,200)) {
       const kind = e.tagName === 'SELECT' ? 'select' : e.matches(widgetSelector) ? 'custom-select' : ['radio','checkbox','file'].includes(e.type) ? e.type : 'text';
@@ -199,9 +200,11 @@
     if (!Array.isArray(m.actions)||m.actions.length>entries.size) throw new Error('无效计划');
     const results=[];
     for (const action of m.actions) {
+      let change=null;
       try {
         const entry=checked(m,action.fieldId);editable(entry);const {e,f,kind}=entry;focus(entry);
         if (!action.overwrite && read(entry)!=='' && read(entry)!==false) throw new Error('已有值，未允许覆盖');
+        const before=read(entry);if(kind==='text')change={entry,before,after:before};
         let expected=action.value;
         if (kind==='custom-select' || action.sessionId) {
           if (!session || action.sessionId!==session.id || session.fieldId!==f.id) throw new Error('下拉选项已失效，请重试');
@@ -220,15 +223,25 @@
         } else {
           if(typeof expected!=='string'||expected.length>10000)throw new Error('填写值无效');assign(e,expected);
         }
+        if(change){change.after=read(entry);if(change.before!==change.after)history.push(change);}
         await wait(200);
         if (!e.isConnected || (kind==='custom-select' ? clean(read(entry))!==clean(expected) : read(entry)!==expected)) throw new Error('未验证到网页保留填写值，请检查控件');
         if(e.validity&&!e.validity.valid)throw new Error('已填写，但格式校验未通过');
-        entry.expected=expected;results.push({fieldId:f.id,ok:true,value:read(entry)});
-      }catch(error){results.push({fieldId:action.fieldId,ok:false,error:error.message});}
+        entry.expected=expected;results.push({fieldId:f.id,ok:true,value:read(entry),undoable:!!change&&change.before!==change.after});
+      }catch(error){results.push({fieldId:action.fieldId,ok:false,error:error.message,undoable:!!change&&history.includes(change)});}
     }
     return {ok:true,results};
   }
+  async function undo(m){
+    if(m.token!==token||m.url!==scanUrl||location.href!==scanUrl)throw new Error('页面或扫描已变化，请重新扫描');
+    const results=[];
+    for(const change of [...history].reverse()){
+      try{const entry=checked(m,change.entry.f.id);editable(entry);if(read(entry)!==change.after)throw new Error('字段已被后续操作修改，保留当前值');assign(entry.e,change.before);await wait(200);if(read(entry)!==change.before)throw new Error('未验证到恢复值，请手动检查');entry.expected=change.before;results.push({fieldId:entry.f.id,ok:true,value:read(entry)});}catch(e){results.push({fieldId:change.entry.f.id,ok:false,error:e.message});}
+    } history=[];return {ok:true,results};
+  }
   async function handle(m) {
+    if(m.type==='BEGIN_RUN'){if(m.token!==token||m.url!==scanUrl||location.href!==scanUrl)throw new Error('页面或扫描已变化，请重新扫描');history=[];return {ok:true};}
+    if(m.type==='UNDO')return await undo(m);
     if(m.type==='SCAN')return await scan(m);
     if(m.type==='OPEN_OPTIONS')return await openOptions(m);
     if(m.type==='CLOSE_OPTIONS')return closeOptions(m);
@@ -240,7 +253,7 @@
     }
   }
   const listener=(m,s,reply)=>{
-    if(s.id!==chrome.runtime.id || !['SCAN','OPEN_OPTIONS','CLOSE_OPTIONS','FILL','LOCATE','VERIFY'].includes(m?.type))return;
+    if(s.id!==chrome.runtime.id || !['SCAN','OPEN_OPTIONS','CLOSE_OPTIONS','FILL','LOCATE','VERIFY','BEGIN_RUN','UNDO'].includes(m?.type))return;
     if(running){reply({ok:false,error:'页面正在执行其他动作'});return;}
     running=true;handle(m).then(reply).catch(e=>reply({ok:false,error:e.message})).finally(()=>{running=false;});return true;
   };
